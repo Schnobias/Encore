@@ -16,6 +16,7 @@
 
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"></script>
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
@@ -123,7 +124,7 @@
             <section id="multiplayer-widget" class="bg-slate-900/60 border border-slate-800 rounded-xl p-2.5 shadow-md hidden flex-col gap-2 transition-all">
                 <div class="flex border-b border-slate-800 pb-2 mb-1 gap-2">
                     <button onclick="switchSetupTab('local')" class="flex-1 text-[10px] uppercase font-bold text-amber-400" id="tab-local">Local Pass & Play</button>
-                    <button onclick="switchSetupTab('online')" class="flex-1 text-[10px] uppercase font-bold text-slate-500" id="tab-online">Online Network</button>
+                    <button onclick="switchSetupTab('online')" class="flex-1 text-[10px] uppercase font-bold text-slate-500" id="tab-online">Online Room</button>
                 </div>
                 <div id="setup-local" class="flex flex-col gap-2">
                     <input id="local-players-input" type="text" placeholder="e.g., Alice, Bob" class="w-full bg-slate-950 border border-slate-800 px-2 py-1.5 rounded-lg text-[11px] text-slate-100">
@@ -132,10 +133,10 @@
                 <div id="setup-online" class="hidden flex-col gap-2">
                     <input id="player-name" type="text" placeholder="Your Name" class="w-full bg-slate-950 border border-slate-800 px-2 py-1.5 rounded-lg text-[11px] text-slate-100">
                     <div class="flex gap-2">
-                        <button onclick="createMultiplayerLobby()" class="flex-1 bg-slate-800 hover:bg-slate-700 font-bold text-[10px] uppercase py-1.5 rounded-lg">Host</button>
+                        <button onclick="createMultiplayerLobby()" class="flex-1 bg-slate-800 hover:bg-slate-700 font-bold text-[10px] uppercase py-1.5 rounded-lg">Host Room</button>
                         <div class="flex-1 flex bg-slate-950 rounded-lg border border-slate-800 p-0.5">
-                            <input id="lobby-code" type="text" placeholder="Code" class="w-full bg-transparent px-2 text-[11px] outline-none text-center">
-                            <button onclick="joinMultiplayerLobby()" class="bg-slate-800 text-[10px] font-bold uppercase px-2 rounded">Join</button>
+                            <input id="lobby-code" type="text" placeholder="4-Digit Code" class="w-full bg-transparent px-2 text-[11px] outline-none text-center uppercase">
+                            <button onclick="joinMultiplayerLobby()" class="bg-amber-500 hover:bg-amber-400 text-slate-950 text-[10px] font-bold uppercase px-2.5 rounded">Join</button>
                         </div>
                     </div>
                 </div>
@@ -192,12 +193,19 @@
     <script type="module">
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'encore-boardgame';
         let db = null, auth = null, firebaseApp = null;
-        let localPlayerId = localStorage.getItem('encore_player_id') || crypto.randomUUID();
+        let localPlayerId = localStorage.getItem('encore_player_id') || Math.floor(1000 + Math.random() * 9000).toString();
         localStorage.setItem('encore_player_id', localPlayerId);
 
         let gameMode = 'solo';
         let currentLobbyId = null, lobbyUnsubscribe = null;
-        const SAVE_KEY = 'encore_save_v5'; // Bumped version for clean slate
+        const SAVE_KEY = 'encore_save_v6';
+
+        // PeerJS WebRTC P2P Networking State
+        let p2pPeer = null;
+        let p2pConns = []; // Host: array of client connections
+        let p2pHostConn = null; // Client: connection to host
+        let isP2PHost = false;
+        let p2pLobbyState = null;
 
         // --- Global UI Helpers ---
         window.openModal = (title, bodyHtml) => {
@@ -339,9 +347,7 @@
             updateScoresAndUI();
         }
 
-        // Visibility listener to catch iframe reload behaviors on mobile
         document.addEventListener("visibilitychange", () => {
-            logDebug(`Visibility changed to: ${document.visibilityState}`);
             if (document.visibilityState === 'hidden') saveGameState('visibility_hidden');
         });
         window.addEventListener("pagehide", () => saveGameState('pagehide'));
@@ -759,8 +765,15 @@
                     if (gameMode === 'online') {
                         const roundNum = 31 - gameState.turnsLeft;
                         const nextPhase = (roundNum <= 3) ? "all_choosing" : "active_choosing";
-                        const ref = window.firebaseModules.doc(db, 'artifacts', appId, 'public', 'data', 'lobbies', currentLobbyId);
-                        await window.firebaseModules.updateDoc(ref, { rolledDice: { colors: fc, nums: fn }, phase: nextPhase });
+                        
+                        if (db) {
+                            const ref = window.firebaseModules.doc(db, 'artifacts', appId, 'public', 'data', 'lobbies', currentLobbyId);
+                            await window.firebaseModules.updateDoc(ref, { rolledDice: { colors: fc, nums: fn }, phase: nextPhase });
+                        } else if (p2pLobbyState) {
+                            p2pLobbyState.rolledDice = { colors: fc, nums: fn };
+                            p2pLobbyState.phase = nextPhase;
+                            broadcastP2PState();
+                        }
                     } else {
                         gameState.diceColors = fc; gameState.diceNums = fn; gameState.phase = "all_choosing";
                         renderDiceTrays(fc, fn, false); setStatus("Select 1 Color & 1 Number die."); updateScoresAndUI();
@@ -1000,69 +1013,180 @@
             renderBoard();
         }
 
-        // --- Firebase Online Multiplayer Logic ---
+        // --- Firebase & PeerJS WebRTC Room Engine ---
         async function initFirebaseAndAuth() {
             try {
-                if (typeof __firebase_config === 'undefined' || !__firebase_config) {
-                    logDebug("No __firebase_config provided; local and offline modes active.");
-                    return;
+                if (typeof __firebase_config !== 'undefined' && __firebase_config) {
+                    const config = JSON.parse(__firebase_config);
+                    firebaseApp = window.firebaseModules.initializeApp(config);
+                    auth = window.firebaseModules.getAuth(firebaseApp);
+                    db = window.firebaseModules.getFirestore(firebaseApp);
+                    let cred = typeof __initial_auth_token !== 'undefined' && __initial_auth_token ? await window.firebaseModules.signInWithCustomToken(auth, __initial_auth_token) : await window.firebaseModules.signInAnonymously(auth);
+                    localPlayerId = cred.user.uid;
                 }
-                const config = JSON.parse(__firebase_config);
-                firebaseApp = window.firebaseModules.initializeApp(config);
-                auth = window.firebaseModules.getAuth(firebaseApp);
-                db = window.firebaseModules.getFirestore(firebaseApp);
-                let cred;
-                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) cred = await window.firebaseModules.signInWithCustomToken(auth, __initial_auth_token);
-                else cred = await window.firebaseModules.signInAnonymously(auth);
-                localPlayerId = cred.user.uid;
             } catch (err) {
-                logDebug(`Firebase Init note: ${err.message}`);
+                logDebug(`Firebase note: ${err.message}`);
             }
         }
 
         window.createMultiplayerLobby = async () => {
-            if (!db) { openModal("Online Setup", "Online multiplayer requires a Firebase config or room relay. Local Pass & Play is fully active!"); return; }
             playSynth('click');
-            let name = document.getElementById('player-name').value.trim();
-            if (!name) { openModal("Missing Name", "Please input your name."); return; }
-
-            let lobbyId = Math.floor(1000 + Math.random() * 9000).toString(); 
+            let name = document.getElementById('player-name').value.trim() || 'Player 1';
+            let lobbyId = Math.floor(1000 + Math.random() * 9000).toString();
             currentLobbyId = lobbyId;
 
             const boardModel = gameState.grid.map(row => row.map(cell => ({ color: cell.color, star: cell.star, r: cell.r, c: cell.c })));
 
-            const newLobby = {
+            p2pLobbyState = {
                 lobbyId, currentTurn: 30, activeRollerId: localPlayerId,
                 phase: "waiting_roll", rolledDice: null, lockedDice: null,
                 board: boardModel,
                 players: { [localPlayerId]: { id: localPlayerId, name, score: 0, wildcardsUsed: 0, crossedCells: [], completedCols: [], completedColors: [], hasTakenTurn: false, isHost: true } }
             };
 
-            const ref = window.firebaseModules.doc(db, 'artifacts', appId, 'public', 'data', 'lobbies', lobbyId);
-            await window.firebaseModules.setDoc(ref, newLobby);
-            gameMode = 'online'; subscribeToLobby(lobbyId); toggleModeSelector();
-            document.getElementById('btn-reroll').classList.add('hidden');
-            openModal("Lobby Hosted!", `Share this Code: <b class="text-amber-400 text-xl">${lobbyId}</b>`);
-            saveGameState('online_lobby_created');
+            if (db) {
+                const ref = window.firebaseModules.doc(db, 'artifacts', appId, 'public', 'data', 'lobbies', lobbyId);
+                await window.firebaseModules.setDoc(ref, p2pLobbyState);
+                gameMode = 'online'; subscribeToLobby(lobbyId); toggleModeSelector();
+            } else {
+                // PeerJS Realtime Room Setup
+                isP2PHost = true;
+                p2pConns = [];
+                const peerId = `encore-room-${lobbyId}`;
+                
+                setStatus("Initializing room server...");
+                p2pPeer = new Peer(peerId);
+                
+                p2pPeer.on('open', (id) => {
+                    logDebug(`P2P Host Room created: ${id}`);
+                    gameMode = 'online';
+                    toggleModeSelector();
+                    document.getElementById('btn-reroll').classList.add('hidden');
+                    syncLobby(p2pLobbyState);
+                    openModal("Room Created!", `Room Code: <b class="text-amber-400 text-2xl tracking-widest">${lobbyId}</b><br><span class="text-xs text-slate-400">Tell friends to enter code <b>${lobbyId}</b> to join!</span>`);
+                });
+
+                p2pPeer.on('connection', (conn) => {
+                    logDebug(`Client connected: ${conn.peer}`);
+                    p2pConns.push(conn);
+
+                    conn.on('data', (data) => {
+                        handleP2PHostMessage(conn, data);
+                    });
+
+                    conn.on('close', () => {
+                        p2pConns = p2pConns.filter(c => c !== conn);
+                    });
+                });
+
+                p2pPeer.on('error', (err) => {
+                    logDebug(`P2P Error: ${err.type}`);
+                    if (err.type === 'unavailable-id') {
+                        // Retry with new code
+                        p2pPeer.destroy();
+                        window.createMultiplayerLobby();
+                    }
+                });
+            }
         }
 
         window.joinMultiplayerLobby = async () => {
-            if (!db) { openModal("Online Setup", "Online multiplayer requires a Firebase config or room relay. Local Pass & Play is fully active!"); return; }
             playSynth('click');
-            let name = document.getElementById('player-name').value.trim();
-            let code = document.getElementById('lobby-code').value.trim();
-            if (!name || !code) return;
+            let name = document.getElementById('player-name').value.trim() || 'Guest';
+            let code = document.getElementById('lobby-code').value.trim().toUpperCase();
+            if (!code) { openModal("Error", "Please enter a 4-digit room code."); return; }
 
-            const ref = window.firebaseModules.doc(db, 'artifacts', appId, 'public', 'data', 'lobbies', code);
-            const snap = await window.firebaseModules.getDoc(ref);
-            if (!snap.exists()) { openModal("Invalid", "Lobby not found."); return; }
+            currentLobbyId = code;
 
-            let lobby = snap.data();
-            lobby.players[localPlayerId] = { id: localPlayerId, name, score: 0, wildcardsUsed: 0, crossedCells: [], completedCols: [], completedColors: [], hasTakenTurn: false, isHost: false };
-            await window.firebaseModules.updateDoc(ref, { players: lobby.players });
-            currentLobbyId = code; gameMode = 'online'; subscribeToLobby(code); toggleModeSelector();
-            document.getElementById('btn-reroll').classList.add('hidden');
-            saveGameState('online_lobby_joined');
+            if (db) {
+                const ref = window.firebaseModules.doc(db, 'artifacts', appId, 'public', 'data', 'lobbies', code);
+                const snap = await window.firebaseModules.getDoc(ref);
+                if (!snap.exists()) { openModal("Invalid", "Lobby not found."); return; }
+
+                let lobby = snap.data();
+                lobby.players[localPlayerId] = { id: localPlayerId, name, score: 0, wildcardsUsed: 0, crossedCells: [], completedCols: [], completedColors: [], hasTakenTurn: false, isHost: false };
+                await window.firebaseModules.updateDoc(ref, { players: lobby.players });
+                gameMode = 'online'; subscribeToLobby(code); toggleModeSelector();
+            } else {
+                // PeerJS Client Setup
+                isP2PHost = false;
+                setStatus("Connecting to room...");
+                p2pPeer = new Peer();
+
+                p2pPeer.on('open', () => {
+                    const hostPeerId = `encore-room-${code}`;
+                    p2pHostConn = p2pPeer.connect(hostPeerId);
+
+                    p2pHostConn.on('open', () => {
+                        logDebug(`Connected to host room ${code}`);
+                        p2pHostConn.send({ type: 'JOIN', id: localPlayerId, name });
+                        gameMode = 'online';
+                        toggleModeSelector();
+                        document.getElementById('btn-reroll').classList.add('hidden');
+                    });
+
+                    p2pHostConn.on('data', (data) => {
+                        if (data.type === 'SYNC_STATE') {
+                            syncLobby(data.state);
+                        }
+                    });
+
+                    p2pHostConn.on('close', () => {
+                        openModal("Disconnected", "Host closed the room.");
+                        initLocalSoloGame();
+                    });
+                });
+
+                p2pPeer.on('error', (err) => {
+                    logDebug(`P2P Client error: ${err.message}`);
+                    openModal("Connection Failed", `Could not connect to Room Code <b>${code}</b>. Please verify the code.`);
+                });
+            }
+        }
+
+        function broadcastP2PState() {
+            if (!isP2PHost || !p2pLobbyState) return;
+            syncLobby(p2pLobbyState);
+            p2pConns.forEach(conn => {
+                if (conn.open) conn.send({ type: 'SYNC_STATE', state: p2pLobbyState });
+            });
+        }
+
+        function handleP2PHostMessage(conn, data) {
+            if (!p2pLobbyState) return;
+            if (data.type === 'JOIN') {
+                p2pLobbyState.players[data.id] = {
+                    id: data.id, name: data.name, score: 0, wildcardsUsed: 0, crossedCells: [], completedCols: [], completedColors: [], hasTakenTurn: false, isHost: false
+                };
+                broadcastP2PState();
+            } else if (data.type === 'COMMIT_TURN') {
+                const pid = data.id;
+                if (!p2pLobbyState.players[pid]) return;
+
+                if (p2pLobbyState.phase === "active_choosing" && pid === p2pLobbyState.activeRollerId) {
+                    p2pLobbyState.lockedDice = data.passed ? null : data.lockedDice;
+                    p2pLobbyState.phase = "all_choosing";
+                    p2pLobbyState.players[pid].hasTakenTurn = true;
+                } else {
+                    p2pLobbyState.players[pid].hasTakenTurn = true;
+                }
+
+                p2pLobbyState.players[pid].crossedCells = data.crossedCells;
+                p2pLobbyState.players[pid].score = data.score;
+                p2pLobbyState.players[pid].wildcardsUsed = data.wildcardsUsed;
+                p2pLobbyState.players[pid].completedCols = data.completedCols;
+                p2pLobbyState.players[pid].completedColors = data.completedColors;
+
+                let allFinished = Object.values(p2pLobbyState.players).every(p => p.hasTakenTurn);
+                if (allFinished) {
+                    let pIds = Object.keys(p2pLobbyState.players);
+                    p2pLobbyState.activeRollerId = pIds[(pIds.indexOf(p2pLobbyState.activeRollerId) + 1) % pIds.length];
+                    p2pLobbyState.currentTurn = Math.max(0, p2pLobbyState.currentTurn - 1);
+                    p2pLobbyState.rolledDice = null; p2pLobbyState.lockedDice = null; p2pLobbyState.phase = "waiting_roll";
+                    pIds.forEach(id => p2pLobbyState.players[id].hasTakenTurn = false);
+                }
+                broadcastP2PState();
+            }
         }
 
         function subscribeToLobby(id) {
@@ -1074,7 +1198,7 @@
         }
 
         function syncLobby(lobby) {
-            document.getElementById('game-mode-tag').innerHTML = `Lobby: <span class="text-amber-400 font-bold">${lobby.lobbyId}</span>`;
+            document.getElementById('game-mode-tag').innerHTML = `Room: <span class="text-amber-400 font-bold">${lobby.lobbyId}</span>`;
             document.getElementById('multiplayer-roster').classList.remove('hidden');
             
             if (lobby.board && (!gameState.grid.length || gameState.grid[0][0].color !== lobby.board[0][0].color)) {
@@ -1148,38 +1272,56 @@
         }
 
         async function finalizeOnlineCommit(passed) {
-            const ref = window.firebaseModules.doc(db, 'artifacts', appId, 'public', 'data', 'lobbies', currentLobbyId);
-            const snap = await window.firebaseModules.getDoc(ref);
-            if (!snap.exists()) return;
-            let lobby = snap.data();
-
-            if (gameState.phase === "active_choosing" && localPlayerId === lobby.activeRollerId) {
-                lobby.lockedDice = passed ? null : {
-                    cIdx: gameState.selectedColorIdx,
-                    nIdx: gameState.selectedNumIdx
-                };
-                lobby.phase = "all_choosing";
-                lobby.players[localPlayerId].hasTakenTurn = true;
-            } else {
-                lobby.players[localPlayerId].hasTakenTurn = true;
-            }
-
             let crossed = []; gameState.grid.forEach(r => r.forEach(c => { if(c.crossed) crossed.push(`${c.r},${c.c}`); }));
-            lobby.players[localPlayerId].crossedCells = crossed;
-            lobby.players[localPlayerId].score = gameState.currentScore;
-            lobby.players[localPlayerId].wildcardsUsed = gameState.wildcardsUsed;
-            lobby.players[localPlayerId].completedCols = gameState.completedCols;
-            lobby.players[localPlayerId].completedColors = gameState.completedColors;
+            
+            const payload = {
+                type: 'COMMIT_TURN',
+                id: localPlayerId,
+                passed,
+                lockedDice: { cIdx: gameState.selectedColorIdx, nIdx: gameState.selectedNumIdx },
+                crossedCells: crossed,
+                score: gameState.currentScore,
+                wildcardsUsed: gameState.wildcardsUsed,
+                completedCols: gameState.completedCols,
+                completedColors: gameState.completedColors
+            };
 
-            let allFinished = Object.values(lobby.players).every(p => p.hasTakenTurn);
-            if (allFinished) {
-                let pIds = Object.keys(lobby.players);
-                lobby.activeRollerId = pIds[(pIds.indexOf(lobby.activeRollerId) + 1) % pIds.length];
-                lobby.currentTurn = Math.max(0, lobby.currentTurn - 1);
-                lobby.rolledDice = null; lobby.lockedDice = null; lobby.phase = "waiting_roll";
-                pIds.forEach(id => lobby.players[id].hasTakenTurn = false);
+            if (db) {
+                const ref = window.firebaseModules.doc(db, 'artifacts', appId, 'public', 'data', 'lobbies', currentLobbyId);
+                const snap = await window.firebaseModules.getDoc(ref);
+                if (!snap.exists()) return;
+                let lobby = snap.data();
+
+                if (gameState.phase === "active_choosing" && localPlayerId === lobby.activeRollerId) {
+                    lobby.lockedDice = passed ? null : payload.lockedDice;
+                    lobby.phase = "all_choosing";
+                    lobby.players[localPlayerId].hasTakenTurn = true;
+                } else {
+                    lobby.players[localPlayerId].hasTakenTurn = true;
+                }
+
+                lobby.players[localPlayerId].crossedCells = crossed;
+                lobby.players[localPlayerId].score = gameState.currentScore;
+                lobby.players[localPlayerId].wildcardsUsed = gameState.wildcardsUsed;
+                lobby.players[localPlayerId].completedCols = gameState.completedCols;
+                lobby.players[localPlayerId].completedColors = gameState.completedColors;
+
+                let allFinished = Object.values(lobby.players).every(p => p.hasTakenTurn);
+                if (allFinished) {
+                    let pIds = Object.keys(lobby.players);
+                    lobby.activeRollerId = pIds[(pIds.indexOf(lobby.activeRollerId) + 1) % pIds.length];
+                    lobby.currentTurn = Math.max(0, lobby.currentTurn - 1);
+                    lobby.rolledDice = null; lobby.lockedDice = null; lobby.phase = "waiting_roll";
+                    pIds.forEach(id => lobby.players[id].hasTakenTurn = false);
+                }
+                await window.firebaseModules.updateDoc(ref, lobby);
+            } else if (p2pPeer) {
+                if (isP2PHost) {
+                    handleP2PHostMessage(null, payload);
+                } else if (p2pHostConn && p2pHostConn.open) {
+                    p2pHostConn.send(payload);
+                }
             }
-            await window.firebaseModules.updateDoc(ref, lobby);
         }
     </script>
 
