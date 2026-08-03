@@ -198,7 +198,7 @@
 
         let gameMode = 'solo';
         let currentLobbyId = null, lobbyUnsubscribe = null;
-        const SAVE_KEY = 'encore_save_v7';
+        const SAVE_KEY = 'encore_save_v8';
 
         // STUN Ice Servers for WebRTC PeerJS P2P NAT Traversal
         const PEER_CONFIG = {
@@ -296,13 +296,18 @@
         }
 
         const COLORS = ['G', 'Y', 'B', 'R', 'O'];
-        const COL_POW = [5, 3, 3, 3, 2, 2, 2, 1, 2, 2, 2, 3, 3, 3, 5];
+        const COL_POW_1ST = [5, 3, 3, 3, 2, 2, 2, 1, 2, 2, 2, 3, 3, 3, 5];
+        const COL_POW_2ND = [3, 2, 2, 2, 1, 1, 1, 0, 1, 1, 1, 2, 2, 2, 3];
         const ROWS = 7, COLS = 15;
 
         let gameState = {
             grid: [], turnsLeft: 30, wildcardsUsed: 0,
             diceRolled: false, selectedColorDie: null, selectedColorIdx: null, selectedNumDie: null, selectedNumIdx: null,
-            firstTurnDone: false, completedCols: [], completedColors: [], currentScore: 0,
+            firstTurnDone: false, 
+            completedCols1st: [], completedCols2nd: [],
+            completedColors1st: [], completedColors2nd: [],
+            globallyCompletedCols1st: [], globallyCompletedColors1st: [],
+            currentScore: 0,
             diceColors: [], diceNums: [],
             players: {}, activeRollerId: null, phase: "all_choosing", lockedDice: null,
             localPlayers: [], currentPlayerViewIndex: 0, localPlayersDone: 0
@@ -599,9 +604,14 @@
             document.getElementById('btn-reroll').classList.add('hidden');
             
             gameState.localPlayers = names.map((name, i) => ({
-                id: i, name: name, crossed: [], wildcardsUsed: 0, completedCols: [], completedColors: [], score: 0
+                id: i, name: name, crossed: [], wildcardsUsed: 0, 
+                completedCols1st: [], completedCols2nd: [],
+                completedColors1st: [], completedColors2nd: [],
+                score: 0
             }));
             
+            gameState.globallyCompletedCols1st = [];
+            gameState.globallyCompletedColors1st = [];
             gameState.activeRollerId = 0;
             gameState.currentPlayerViewIndex = 0;
             gameState.localPlayersDone = 0;
@@ -623,8 +633,10 @@
             p.crossed = [];
             gameState.grid.forEach(r => r.forEach(c => { if(c.crossed) p.crossed.push(`${c.r},${c.c}`); }));
             p.wildcardsUsed = gameState.wildcardsUsed;
-            p.completedCols = gameState.completedCols;
-            p.completedColors = gameState.completedColors;
+            p.completedCols1st = gameState.completedCols1st || [];
+            p.completedCols2nd = gameState.completedCols2nd || [];
+            p.completedColors1st = gameState.completedColors1st || [];
+            p.completedColors2nd = gameState.completedColors2nd || [];
             p.score = gameState.currentScore;
         }
 
@@ -632,8 +644,10 @@
             let p = gameState.localPlayers[idx];
             gameState.grid.forEach(r => r.forEach(c => c.crossed = p.crossed.includes(`${c.r},${c.c}`)));
             gameState.wildcardsUsed = p.wildcardsUsed;
-            gameState.completedCols = p.completedCols || [];
-            gameState.completedColors = p.completedColors || [];
+            gameState.completedCols1st = p.completedCols1st || [];
+            gameState.completedCols2nd = p.completedCols2nd || [];
+            gameState.completedColors1st = p.completedColors1st || [];
+            gameState.completedColors2nd = p.completedColors2nd || [];
             gameState.currentScore = p.score;
             gameState.firstTurnDone = p.crossed.length > 0;
             
@@ -703,7 +717,8 @@
                 gameState.diceRolled = false;
                 gameState.lockedDice = null;
 
-                let gameEnded = gameState.turnsLeft <= 0 || gameState.localPlayers.some(p => p.completedColors.length >= 2);
+                let totalCompletedColors = (gameState.globallyCompletedColors1st || []).length;
+                let gameEnded = gameState.turnsLeft <= 0 || totalCompletedColors >= 2;
                 saveGameState('local_commit_round_end');
                 
                 if (gameEnded) endLocalMultiplayerGame();
@@ -749,7 +764,10 @@
             document.getElementById('round-indicator').classList.add('hidden');
             document.getElementById('btn-reroll').classList.remove('hidden'); document.getElementById('btn-reroll').disabled = false;
             gameState.turnsLeft = 30; gameState.wildcardsUsed = 0; gameState.diceRolled = false; gameState.firstTurnDone = false;
-            gameState.completedCols = []; gameState.completedColors = []; gameState.currentScore = 0;
+            gameState.completedCols1st = []; gameState.completedCols2nd = [];
+            gameState.completedColors1st = []; gameState.completedColors2nd = [];
+            gameState.globallyCompletedCols1st = []; gameState.globallyCompletedColors1st = [];
+            gameState.currentScore = 0;
             gameState.grid.forEach(r=>r.forEach(c=>{ c.crossed=false; c.tempCrossed=false; }));
             updateScoresAndUI(); setStatus("Ready! Roll the dice to begin.");
             saveGameState('init_solo');
@@ -919,7 +937,8 @@
             gameState.selectedNumDie = null; gameState.selectedNumIdx = null;
             
             document.getElementById('color-dice-pool').innerHTML = ''; document.getElementById('num-dice-pool').innerHTML = '';
-            if (gameState.turnsLeft <= 0 || gameState.completedColors.length >= 2) {
+            let totalColorsDone = (gameState.completedColors1st || []).length + (gameState.completedColors2nd || []).length;
+            if (gameState.turnsLeft <= 0 || totalColorsDone >= 2) {
                 playSynth('fanfare'); confetti({ particleCount: 180, spread: 85 });
                 openModal("Match Complete!", `Solo Game complete. Final Score: <b class="text-amber-400 text-xl">${gameState.currentScore}</b>!`);
                 initLocalSoloGame();
@@ -943,11 +962,47 @@
                     cont.appendChild(btn);
                 }
             }
-            const pts = document.getElementById('column-points-container'); pts.innerHTML = '';
-            for(let c=0; c<COLS; c++) pts.innerHTML += `<div class="text-center p-0.5 md:p-1 rounded font-black text-[9px] md:text-[11px] ${gameState.completedCols.includes(c)?'bg-emerald-500/20 text-emerald-400 line-through':'bg-slate-800 text-slate-300'}">${COL_POW[c]}</div>`;
 
+            // Column Points Render (1st & 2nd place scoring)
+            const pts = document.getElementById('column-points-container'); pts.innerHTML = '';
+            for(let c=0; c<COLS; c++) {
+                const is1stMy = (gameState.completedCols1st || []).includes(c);
+                const is2ndMy = (gameState.completedCols2nd || []).includes(c);
+                const is1stGlobal = (gameState.globallyCompletedCols1st || []).includes(c);
+
+                let colHtml = '';
+                if (is1stMy) {
+                    colHtml = `<div class="text-center p-0.5 md:p-1 rounded font-black text-[9px] md:text-[11px] bg-emerald-500/30 text-emerald-400 border border-emerald-500/50">+${COL_POW_1ST[c]}</div>`;
+                } else if (is2ndMy) {
+                    colHtml = `<div class="text-center p-0.5 md:p-1 rounded font-black text-[9px] md:text-[11px] bg-amber-500/20 text-amber-300 border border-amber-500/40">+${COL_POW_2ND[c]}</div>`;
+                } else if (is1stGlobal) {
+                    colHtml = `<div class="text-center p-0.5 md:p-1 rounded font-bold text-[8px] md:text-[10px] bg-slate-900 text-amber-400/80 border border-dashed border-amber-500/40">${COL_POW_2ND[c]}</div>`;
+                } else {
+                    colHtml = `<div class="text-center p-0.5 md:p-1 rounded font-black text-[9px] md:text-[11px] bg-slate-800 text-slate-300 flex flex-col leading-tight"><span class="text-slate-200">${COL_POW_1ST[c]}</span><span class="text-[7px] md:text-[8px] text-slate-500">${COL_POW_2ND[c]}</span></div>`;
+                }
+                pts.innerHTML += colHtml;
+            }
+
+            // Color Bonuses Render (1st & 2nd place)
             const cb = document.getElementById('color-bonus-track'); cb.innerHTML = '';
-            COLORS.forEach(c => cb.innerHTML += `<div class="flex justify-between items-center bg-slate-950/40 p-1 md:p-1.5 rounded-lg border border-slate-800/60 ${gameState.completedColors.includes(c)?'opacity-40':''}"><div class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-color-${c}"></span><span class="font-bold text-[9px] md:text-[10px] text-slate-300">All ${c}</span></div><span class="font-black text-[9px] md:text-[10px] ${gameState.completedColors.includes(c)?'text-emerald-400 line-through':'text-amber-400'}">+5</span></div>`);
+            COLORS.forEach(c => {
+                const is1stMy = (gameState.completedColors1st || []).includes(c);
+                const is2ndMy = (gameState.completedColors2nd || []).includes(c);
+                const is1stGlobal = (gameState.globallyCompletedColors1st || []).includes(c);
+
+                let tagHtml = '';
+                if (is1stMy) {
+                    tagHtml = `<span class="font-black text-[9px] md:text-[10px] text-emerald-400 bg-emerald-500/20 px-1.5 py-0.5 rounded border border-emerald-500/40">+5 (1st)</span>`;
+                } else if (is2ndMy) {
+                    tagHtml = `<span class="font-black text-[9px] md:text-[10px] text-amber-300 bg-amber-500/20 px-1.5 py-0.5 rounded border border-amber-500/40">+3 (2nd)</span>`;
+                } else if (is1stGlobal) {
+                    tagHtml = `<span class="font-bold text-[9px] md:text-[10px] text-amber-400/80 bg-slate-900 px-1 py-0.5 rounded border border-dashed border-amber-500/40">+3 Left</span>`;
+                } else {
+                    tagHtml = `<span class="font-black text-[9px] md:text-[10px] text-amber-400">+5 / +3</span>`;
+                }
+
+                cb.innerHTML += `<div class="flex justify-between items-center bg-slate-950/40 p-1 md:p-1.5 rounded-lg border border-slate-800/60 ${is1stMy||is2ndMy?'opacity-60':''}"><div class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-color-${c}"></span><span class="font-bold text-[9px] md:text-[10px] text-slate-300">All ${c}</span></div>${tagHtml}</div>`;
+            });
 
             const wt = document.getElementById('wildcard-track'); wt.innerHTML = '';
             for(let i=1; i<=8; i++) wt.innerHTML += `<div class="aspect-square rounded flex items-center justify-center font-bold text-[10px] ${gameState.wildcardsUsed>=i?'bg-slate-800 border-slate-700 text-slate-500 line-through':'bg-amber-500/15 border-amber-500/40 text-amber-400 border'}">!</div>`;
@@ -956,24 +1011,58 @@
 
         function evalGlobalCompletions() {
             let u = false;
+            if (!gameState.completedCols1st) gameState.completedCols1st = [];
+            if (!gameState.completedCols2nd) gameState.completedCols2nd = [];
+            if (!gameState.completedColors1st) gameState.completedColors1st = [];
+            if (!gameState.completedColors2nd) gameState.completedColors2nd = [];
+            if (!gameState.globallyCompletedCols1st) gameState.globallyCompletedCols1st = [];
+            if (!gameState.globallyCompletedColors1st) gameState.globallyCompletedColors1st = [];
+
+            // Check columns A-O
             for(let c=0; c<COLS; c++) {
-                if(!gameState.completedCols.includes(c)) {
-                    let full=true; for(let r=0; r<ROWS; r++) if(!gameState.grid[r][c].crossed) full=false;
-                    if(full) { gameState.completedCols.push(c); u=true; }
+                if(!gameState.completedCols1st.includes(c) && !gameState.completedCols2nd.includes(c)) {
+                    let full = true;
+                    for(let r=0; r<ROWS; r++) if(!gameState.grid[r][c].crossed) full = false;
+                    if(full) {
+                        if (!gameState.globallyCompletedCols1st.includes(c)) {
+                            gameState.completedCols1st.push(c);
+                            gameState.globallyCompletedCols1st.push(c);
+                        } else {
+                            gameState.completedCols2nd.push(c);
+                        }
+                        u = true;
+                    }
                 }
             }
+
+            // Check colors
             COLORS.forEach(c => {
-                if(!gameState.completedColors.includes(c)) {
-                    let full=true; gameState.grid.forEach(row=>row.forEach(cell=>{ if(cell.color===c && !cell.crossed) full=false; }));
-                    if(full) { gameState.completedColors.push(c); u=true; }
+                if(!gameState.completedColors1st.includes(c) && !gameState.completedColors2nd.includes(c)) {
+                    let full = true;
+                    gameState.grid.forEach(row=>row.forEach(cell=>{ if(cell.color===c && !cell.crossed) full=false; }));
+                    if(full) {
+                        if (!gameState.globallyCompletedColors1st.includes(c)) {
+                            gameState.completedColors1st.push(c);
+                            gameState.globallyCompletedColors1st.push(c);
+                        } else {
+                            gameState.completedColors2nd.push(c);
+                        }
+                        u = true;
+                    }
                 }
-            }); return u;
+            });
+            return u;
         }
 
         function calcScore() {
-            let cS = 0; gameState.completedCols.forEach(c => cS += COL_POW[c]);
-            let colS = gameState.completedColors.length * 5, wS = 8 - gameState.wildcardsUsed;
-            let stars = 0; gameState.grid.forEach(r => r.forEach(c => { if(c.star && !c.crossed) stars++; }));
+            let cS = 0;
+            (gameState.completedCols1st || []).forEach(c => cS += COL_POW_1ST[c]);
+            (gameState.completedCols2nd || []).forEach(c => cS += COL_POW_2ND[c]);
+
+            let colS = ((gameState.completedColors1st || []).length * 5) + ((gameState.completedColors2nd || []).length * 3);
+            let wS = 8 - gameState.wildcardsUsed;
+            let stars = 0; 
+            gameState.grid.forEach(r => r.forEach(c => { if(c.star && !c.crossed) stars++; }));
             let sP = stars * -2;
             gameState.currentScore = cS + colS + wS + sP;
 
@@ -1052,8 +1141,9 @@
             p2pLobbyState = {
                 lobbyId: roomCode, currentTurn: 30, activeRollerId: localPlayerId,
                 phase: "waiting_roll", rolledDice: null, lockedDice: null,
+                globallyCompletedCols1st: [], globallyCompletedColors1st: [],
                 board: boardModel,
-                players: { [localPlayerId]: { id: localPlayerId, name, score: 0, wildcardsUsed: 0, crossedCells: [], completedCols: [], completedColors: [], hasTakenTurn: false, isHost: true } }
+                players: { [localPlayerId]: { id: localPlayerId, name, score: 0, wildcardsUsed: 0, crossedCells: [], completedCols1st: [], completedCols2nd: [], completedColors1st: [], completedColors2nd: [], hasTakenTurn: false, isHost: true } }
             };
 
             if (db) {
@@ -1115,7 +1205,7 @@
                 if (!snap.exists()) { openModal("Invalid", "Lobby not found."); return; }
 
                 let lobby = snap.data();
-                lobby.players[localPlayerId] = { id: localPlayerId, name, score: 0, wildcardsUsed: 0, crossedCells: [], completedCols: [], completedColors: [], hasTakenTurn: false, isHost: false };
+                lobby.players[localPlayerId] = { id: localPlayerId, name, score: 0, wildcardsUsed: 0, crossedCells: [], completedCols1st: [], completedCols2nd: [], completedColors1st: [], completedColors2nd: [], hasTakenTurn: false, isHost: false };
                 await window.firebaseModules.updateDoc(ref, { players: lobby.players });
                 gameMode = 'online'; subscribeToLobby(code); toggleModeSelector();
             } else {
@@ -1167,7 +1257,7 @@
             if (!p2pLobbyState) return;
             if (data.type === 'JOIN') {
                 p2pLobbyState.players[data.id] = {
-                    id: data.id, name: data.name, score: 0, wildcardsUsed: 0, crossedCells: [], completedCols: [], completedColors: [], hasTakenTurn: false, isHost: false
+                    id: data.id, name: data.name, score: 0, wildcardsUsed: 0, crossedCells: [], completedCols1st: [], completedCols2nd: [], completedColors1st: [], completedColors2nd: [], hasTakenTurn: false, isHost: false
                 };
                 broadcastP2PState();
             } else if (data.type === 'COMMIT_TURN') {
@@ -1185,8 +1275,21 @@
                 p2pLobbyState.players[pid].crossedCells = data.crossedCells;
                 p2pLobbyState.players[pid].score = data.score;
                 p2pLobbyState.players[pid].wildcardsUsed = data.wildcardsUsed;
-                p2pLobbyState.players[pid].completedCols = data.completedCols;
-                p2pLobbyState.players[pid].completedColors = data.completedColors;
+                p2pLobbyState.players[pid].completedCols1st = data.completedCols1st;
+                p2pLobbyState.players[pid].completedCols2nd = data.completedCols2nd;
+                p2pLobbyState.players[pid].completedColors1st = data.completedColors1st;
+                p2pLobbyState.players[pid].completedColors2nd = data.completedColors2nd;
+
+                if (data.completedCols1st) {
+                    data.completedCols1st.forEach(c => {
+                        if (!p2pLobbyState.globallyCompletedCols1st.includes(c)) p2pLobbyState.globallyCompletedCols1st.push(c);
+                    });
+                }
+                if (data.completedColors1st) {
+                    data.completedColors1st.forEach(c => {
+                        if (!p2pLobbyState.globallyCompletedColors1st.includes(c)) p2pLobbyState.globallyCompletedColors1st.push(c);
+                    });
+                }
 
                 let allFinished = Object.values(p2pLobbyState.players).every(p => p.hasTakenTurn);
                 if (allFinished) {
@@ -1221,6 +1324,8 @@
             gameState.players = lobby.players;
             gameState.phase = lobby.phase;
             gameState.lockedDice = lobby.lockedDice;
+            gameState.globallyCompletedCols1st = lobby.globallyCompletedCols1st || [];
+            gameState.globallyCompletedColors1st = lobby.globallyCompletedColors1st || [];
 
             const roundNum = 31 - lobby.currentTurn;
             const roundInd = document.getElementById('round-indicator');
@@ -1232,8 +1337,10 @@
             if (myData) {
                 gameState.grid.forEach(r => r.forEach(c => c.crossed = myData.crossedCells.includes(`${c.r},${c.c}`)));
                 gameState.wildcardsUsed = myData.wildcardsUsed;
-                gameState.completedCols = myData.completedCols || [];
-                gameState.completedColors = myData.completedColors || [];
+                gameState.completedCols1st = myData.completedCols1st || [];
+                gameState.completedCols2nd = myData.completedCols2nd || [];
+                gameState.completedColors1st = myData.completedColors1st || [];
+                gameState.completedColors2nd = myData.completedColors2nd || [];
                 gameState.currentScore = myData.score;
                 gameState.firstTurnDone = myData.crossedCells.length > 0;
             }
@@ -1293,8 +1400,10 @@
                 crossedCells: crossed,
                 score: gameState.currentScore,
                 wildcardsUsed: gameState.wildcardsUsed,
-                completedCols: gameState.completedCols,
-                completedColors: gameState.completedColors
+                completedCols1st: gameState.completedCols1st,
+                completedCols2nd: gameState.completedCols2nd,
+                completedColors1st: gameState.completedColors1st,
+                completedColors2nd: gameState.completedColors2nd
             };
 
             if (db) {
@@ -1314,8 +1423,20 @@
                 lobby.players[localPlayerId].crossedCells = crossed;
                 lobby.players[localPlayerId].score = gameState.currentScore;
                 lobby.players[localPlayerId].wildcardsUsed = gameState.wildcardsUsed;
-                lobby.players[localPlayerId].completedCols = gameState.completedCols;
-                lobby.players[localPlayerId].completedColors = gameState.completedColors;
+                lobby.players[localPlayerId].completedCols1st = gameState.completedCols1st;
+                lobby.players[localPlayerId].completedCols2nd = gameState.completedCols2nd;
+                lobby.players[localPlayerId].completedColors1st = gameState.completedColors1st;
+                lobby.players[localPlayerId].completedColors2nd = gameState.completedColors2nd;
+
+                if (!lobby.globallyCompletedCols1st) lobby.globallyCompletedCols1st = [];
+                if (!lobby.globallyCompletedColors1st) lobby.globallyCompletedColors1st = [];
+
+                (gameState.completedCols1st || []).forEach(c => {
+                    if (!lobby.globallyCompletedCols1st.includes(c)) lobby.globallyCompletedCols1st.push(c);
+                });
+                (gameState.completedColors1st || []).forEach(c => {
+                    if (!lobby.globallyCompletedColors1st.includes(c)) lobby.globallyCompletedColors1st.push(c);
+                });
 
                 let allFinished = Object.values(lobby.players).every(p => p.hasTakenTurn);
                 if (allFinished) {
