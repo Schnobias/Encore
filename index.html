@@ -870,8 +870,7 @@
             let visited = new Set(), hasAnchor = false;
             function dfs(c) {
                 visited.add(`${c.r},${c.c}`);
-                if (!gameState.firstTurnDone && c.c === 7) hasAnchor = true;
-                if (gameState.firstTurnDone && hasAdj(c.r, c.c)) hasAnchor = true;
+                if (c.c === 7 || hasAdj(c.r, c.c)) hasAnchor = true;
                 [[-1,0],[1,0],[0,-1],[0,1]].forEach(([dr,dc]) => {
                     let nr=c.r+dr, nc=c.c+dc;
                     if(nr>=0 && nr<ROWS && nc>=0 && nc<COLS && gameState.grid[nr][nc].tempCrossed && !visited.has(`${nr},${nc}`)) dfs(gameState.grid[nr][nc]);
@@ -880,7 +879,7 @@
             dfs(temps[0]);
             
             if (visited.size !== temps.length) return "Selection must form a contiguous shape.";
-            if (!hasAnchor) return gameState.firstTurnDone ? "Must touch a previously crossed cell." : "First turn must touch column H.";
+            if (!hasAnchor) return "Must touch column H or a previously crossed cell.";
 
             return null;
         }
