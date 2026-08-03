@@ -1,0 +1,1197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Encore! - Mobile & Web Multiplayer</title>
+    
+    <!-- PWA & Mobile Meta Tags -->
+    <meta name="theme-color" content="#020617">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Encore!">
+    <link rel="manifest" href="manifest.json">
+    <link rel="icon" type="image/svg+xml" href="icon.svg">
+    <link rel="apple-touch-icon" href="icon.svg">
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, setDoc, getDoc, updateDoc, onSnapshot, collection } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        window.firebaseModules = { initializeApp, getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged, getFirestore, doc, setDoc, getDoc, updateDoc, onSnapshot, collection };
+    </script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Fredoka+One&family=Quicksand:wght@400;600;700&display=swap');
+        body { font-family: 'Quicksand', sans-serif; background-color: #020617; }
+        .fancy-font { font-family: 'Fredoka One', sans-serif; }
+        
+        .bg-color-G { background-color: #22c55e; }
+        .bg-color-Y { background-color: #facc15; }
+        .bg-color-B { background-color: #3b82f6; }
+        .bg-color-R { background-color: #ef4444; }
+        .bg-color-O { background-color: #f97316; }
+
+        @keyframes shake {
+            0% { transform: translate(1px, 1px) rotate(0deg); }
+            20% { transform: translate(-2px, 0px) rotate(1deg); }
+            40% { transform: translate(1px, -1px) rotate(1deg); }
+            60% { transform: translate(-2px, 0px) rotate(0deg); }
+            80% { transform: translate(-1px, -1px) rotate(1deg); }
+            100% { transform: translate(1px, -1px) rotate(0deg); }
+        }
+        .animate-shake { animation: shake 0.35s ease-in-out infinite; }
+        .grid-cols-15 { grid-template-columns: repeat(15, minmax(0, 1fr)); }
+        
+        .board-container {
+            width: 100%;
+            max-width: min(100%, calc((100dvh - 12rem) * 15 / 7));
+            margin: 0 auto;
+        }
+    </style>
+</head>
+<body class="text-slate-100 h-[100dvh] w-screen overflow-hidden flex flex-col select-none bg-slate-950 relative">
+
+    <!-- Debug Panel -->
+    <button onclick="toggleDebug()" class="fixed bottom-3 right-3 bg-slate-800 hover:bg-slate-700 text-lg w-10 h-10 rounded-full z-[100] shadow-lg flex items-center justify-center transition-colors">🐛</button>
+    <div id="debug-panel" class="fixed bottom-14 right-3 w-80 h-64 bg-slate-900 border border-slate-700 rounded-xl p-3 flex flex-col z-[100] shadow-2xl hidden opacity-95 backdrop-blur-sm">
+        <div class="flex justify-between items-center mb-2 border-b border-slate-700 pb-2">
+            <span class="text-xs font-bold text-amber-400 uppercase tracking-wider">System Logs</span>
+            <button onclick="clearDebug()" class="text-[10px] bg-slate-800 px-2 py-1 rounded text-slate-300 hover:text-white">Clear</button>
+        </div>
+        <div id="debug-logs" class="flex-1 overflow-y-auto text-[10px] font-mono text-slate-300 space-y-1.5 break-words"></div>
+    </div>
+
+    <div id="game-modal" class="fixed inset-0 bg-slate-950/90 backdrop-blur-sm z-50 flex items-center justify-center hidden opacity-0 transition-opacity duration-300">
+        <div class="bg-slate-900 border border-slate-700/50 rounded-2xl p-6 md:p-8 max-w-md w-full mx-4 text-center shadow-2xl transform scale-95 transition-transform duration-300">
+            <h2 id="modal-title" class="fancy-font text-3xl text-amber-400 mb-4">Notification</h2>
+            <div id="modal-body" class="text-slate-300 space-y-3 mb-6 text-sm"></div>
+            <div class="flex gap-3 justify-center">
+                <button onclick="closeModal()" class="w-full bg-amber-500 hover:bg-amber-400 text-slate-950 fancy-font py-2.5 px-6 rounded-xl transition-all shadow-lg">Okay</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="pass-overlay" class="fixed inset-0 bg-slate-950/95 z-[60] flex flex-col items-center justify-center hidden opacity-0 transition-opacity duration-300">
+        <h2 class="fancy-font text-4xl text-amber-400 mb-2">Device Passing</h2>
+        <p class="text-slate-400 mb-8" id="pass-subtitle">Pass device to the next player.</p>
+        <button onclick="acceptPass()" class="bg-emerald-500 hover:bg-emerald-400 text-slate-950 fancy-font py-4 px-10 rounded-2xl text-2xl transition-all shadow-xl active:scale-95">I'm Ready!</button>
+    </div>
+
+    <header class="flex-none bg-slate-900/90 border-b border-slate-800 p-2 md:px-4 flex justify-between items-center shadow-md z-10">
+        <div class="flex items-center gap-2 md:gap-3">
+            <div class="bg-amber-500 text-slate-950 px-2 py-1 rounded-lg fancy-font text-base md:text-xl tracking-wider transform rotate-[-1deg] shadow-sm">
+                ENCORE!
+            </div>
+            <div class="text-slate-400 text-[9px] md:text-xs font-semibold uppercase tracking-widest hidden sm:block" id="game-mode-tag">Solo Mode</div>
+        </div>
+        <div class="flex items-center gap-1.5 md:gap-3 flex-wrap justify-end">
+            <div class="flex items-center gap-1.5 bg-slate-950/50 px-2 py-1 rounded-lg border border-slate-800">
+                <span id="score-counter" class="fancy-font text-base md:text-lg text-amber-400">0</span>
+                <span class="text-[9px] text-slate-500 font-bold uppercase">Pts</span>
+            </div>
+            <div class="flex items-center gap-1.5 bg-slate-950/50 px-2 md:px-2.5 py-1 rounded-lg border border-slate-800">
+                <span class="text-[9px] md:text-[10px] text-slate-400 font-bold uppercase hidden sm:block" id="turn-label">Turns</span>
+                <span id="turn-counter" class="fancy-font text-base md:text-lg text-emerald-400">30</span>
+            </div>
+            <div class="flex gap-1">
+                <button id="btn-reroll" onclick="regenerateBoard()" class="bg-slate-800 hover:bg-slate-700 text-[9px] md:text-[10px] font-bold uppercase py-1 px-1.5 md:px-2 rounded-lg transition-colors ml-1">
+                    🔄 <span class="hidden md:inline">New</span>
+                </button>
+                <button onclick="toggleModeSelector()" class="bg-slate-800 hover:bg-slate-700 text-[9px] md:text-[10px] font-bold uppercase py-1 px-1.5 md:px-2 rounded-lg transition-colors">
+                    ⚙️ <span class="hidden md:inline">Modes</span>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <div class="flex-1 flex flex-col md:flex-row overflow-hidden p-1.5 gap-1.5 md:p-2 md:gap-2">
+        <main class="flex-1 min-w-0 min-h-0 flex flex-col items-center justify-center bg-slate-900 border border-slate-800 rounded-xl shadow-inner p-1.5 md:p-3 relative overflow-hidden">
+            <div class="board-container flex flex-col items-center justify-center">
+                <div class="w-full grid grid-cols-15 gap-0.5 md:gap-1 mb-1 text-center text-slate-500 font-bold text-[9px] md:text-[10px]">
+                    <div>A</div><div>B</div><div>C</div><div>D</div><div>E</div><div>F</div><div>G</div>
+                    <div class="text-amber-400 border-b border-dashed border-amber-500/40">H</div>
+                    <div>I</div><div>J</div><div>K</div><div>L</div><div>M</div><div>N</div><div>O</div>
+                </div>
+                <div id="grid-container" class="w-full grid grid-cols-15 gap-0.5 md:gap-1"></div>
+                <div id="column-points-container" class="w-full grid grid-cols-15 gap-0.5 md:gap-1 mt-1"></div>
+            </div>
+        </main>
+
+        <aside class="w-full md:w-64 lg:w-72 flex-none flex flex-col gap-1.5 md:gap-2 min-h-0 overflow-y-auto pr-0.5">
+            <section id="multiplayer-widget" class="bg-slate-900/60 border border-slate-800 rounded-xl p-2.5 shadow-md hidden flex-col gap-2 transition-all">
+                <div class="flex border-b border-slate-800 pb-2 mb-1 gap-2">
+                    <button onclick="switchSetupTab('local')" class="flex-1 text-[10px] uppercase font-bold text-amber-400" id="tab-local">Local Pass & Play</button>
+                    <button onclick="switchSetupTab('online')" class="flex-1 text-[10px] uppercase font-bold text-slate-500" id="tab-online">Online Network</button>
+                </div>
+                <div id="setup-local" class="flex flex-col gap-2">
+                    <input id="local-players-input" type="text" placeholder="e.g., Alice, Bob" class="w-full bg-slate-950 border border-slate-800 px-2 py-1.5 rounded-lg text-[11px] text-slate-100">
+                    <button onclick="startLocalMultiplayer()" class="w-full bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-[10px] uppercase px-2 py-1.5 rounded-lg">Start Local Match</button>
+                </div>
+                <div id="setup-online" class="hidden flex-col gap-2">
+                    <input id="player-name" type="text" placeholder="Your Name" class="w-full bg-slate-950 border border-slate-800 px-2 py-1.5 rounded-lg text-[11px] text-slate-100">
+                    <div class="flex gap-2">
+                        <button onclick="createMultiplayerLobby()" class="flex-1 bg-slate-800 hover:bg-slate-700 font-bold text-[10px] uppercase py-1.5 rounded-lg">Host</button>
+                        <div class="flex-1 flex bg-slate-950 rounded-lg border border-slate-800 p-0.5">
+                            <input id="lobby-code" type="text" placeholder="Code" class="w-full bg-transparent px-2 text-[11px] outline-none text-center">
+                            <button onclick="joinMultiplayerLobby()" class="bg-slate-800 text-[10px] font-bold uppercase px-2 rounded">Join</button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <section id="multiplayer-roster" class="bg-slate-900/40 border border-slate-800 rounded-xl p-2 shadow-sm hidden flex-wrap gap-1 items-center">
+                <div class="text-[9px] uppercase font-bold text-slate-500 mr-1">Players:</div>
+                <div id="roster-list" class="flex flex-wrap gap-1"></div>
+            </section>
+
+            <section class="bg-slate-900/50 border border-slate-800 rounded-xl p-2.5 shadow-md flex flex-col gap-2">
+                <div class="flex justify-between items-center">
+                    <div id="status-text" class="text-amber-400 font-medium text-[11px] leading-tight flex-1">Loading...</div>
+                    <div id="round-indicator" class="text-[9px] bg-slate-800 px-1.5 py-0.5 rounded text-slate-300 font-bold hidden ml-2">RND 1</div>
+                </div>
+                
+                <div class="flex gap-2 justify-center py-0.5">
+                    <div id="color-dice-pool" class="flex gap-1.5"></div>
+                    <div class="w-px bg-slate-800 hidden md:block"></div>
+                    <div id="num-dice-pool" class="flex gap-1.5"></div>
+                </div>
+
+                <div class="flex gap-1.5">
+                    <button id="btn-roll" onclick="rollDice()" disabled class="flex-1 bg-emerald-500 hover:bg-emerald-400 disabled:bg-slate-800 disabled:text-slate-600 text-slate-950 fancy-font py-1.5 md:py-2 rounded-lg text-xs md:text-sm transition-all active:scale-95">🎲 Roll</button>
+                    <button id="btn-confirm" onclick="confirmTurn()" disabled class="flex-1 bg-amber-500 hover:bg-amber-400 disabled:bg-slate-800 disabled:text-slate-600 text-slate-950 fancy-font py-1.5 md:py-2 rounded-lg text-xs md:text-sm transition-all active:scale-95">✅ Ok</button>
+                    <button id="btn-pass" onclick="passTurn()" disabled class="bg-slate-800 hover:bg-slate-700 disabled:opacity-40 disabled:hover:bg-slate-800 text-slate-300 font-semibold px-2 py-1.5 rounded-lg text-[10px] md:text-xs transition-all">Pass</button>
+                </div>
+            </section>
+
+            <div class="bg-slate-900 border border-slate-800 rounded-xl p-2 md:p-2.5 shadow-sm">
+                <div class="flex justify-between items-center mb-1">
+                    <span class="text-[9px] uppercase font-bold text-slate-400 tracking-wider">Wildcards</span>
+                    <span id="wildcards-rem" class="text-[9px] font-bold text-amber-400 bg-amber-400/10 px-1.5 py-0.5 rounded">8 Left</span>
+                </div>
+                <div class="grid grid-cols-8 gap-0.5 md:gap-1" id="wildcard-track"></div>
+            </div>
+
+            <div class="bg-slate-900 border border-slate-800 rounded-xl p-2 md:p-2.5 shadow-sm flex-1 flex flex-col justify-between min-h-[140px]">
+                <div>
+                    <span class="text-[9px] uppercase font-bold text-slate-400 tracking-wider block mb-1">Color Bonuses</span>
+                    <div class="space-y-1" id="color-bonus-track"></div>
+                </div>
+                <div class="mt-1 pt-1 border-t border-slate-800 space-y-0.5 text-[9px] md:text-[10px] text-slate-300">
+                    <div class="flex justify-between"><span>Columns:</span><span id="score-breakdown-cols" class="font-semibold text-slate-100">0</span></div>
+                    <div class="flex justify-between"><span>Colors:</span><span id="score-breakdown-colors" class="font-semibold text-slate-100">0</span></div>
+                    <div class="flex justify-between"><span>Wildcards:</span><span id="score-breakdown-wild" class="font-semibold text-slate-100">0</span></div>
+                    <div class="flex justify-between text-rose-400"><span>Stars (x-2):</span><span id="score-breakdown-stars" class="font-semibold">0</span></div>
+                    <div class="flex justify-between pt-0.5 font-bold text-xs text-amber-400"><span>Total:</span><span id="score-breakdown-total">0</span></div>
+                </div>
+            </div>
+        </aside>
+    </div>
+
+    <script type="module">
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'encore-boardgame';
+        let db = null, auth = null, firebaseApp = null;
+        let localPlayerId = localStorage.getItem('encore_player_id') || crypto.randomUUID();
+        localStorage.setItem('encore_player_id', localPlayerId);
+
+        let gameMode = 'solo';
+        let currentLobbyId = null, lobbyUnsubscribe = null;
+        const SAVE_KEY = 'encore_save_v5'; // Bumped version for clean slate
+
+        // --- Global UI Helpers ---
+        window.openModal = (title, bodyHtml) => {
+            document.getElementById('modal-title').innerText = title;
+            document.getElementById('modal-body').innerHTML = bodyHtml;
+            const modal = document.getElementById('game-modal');
+            modal.classList.remove('hidden');
+            setTimeout(() => { modal.classList.remove('opacity-0'); modal.children[0].classList.remove('scale-95'); }, 10);
+        };
+
+        window.closeModal = () => {
+            playSynth('click');
+            const modal = document.getElementById('game-modal');
+            modal.classList.add('opacity-0');
+            modal.children[0].classList.add('scale-95');
+            setTimeout(() => modal.classList.add('hidden'), 300);
+        };
+
+        function setStatus(html) {
+            document.getElementById('status-text').innerHTML = html;
+        }
+
+        // --- Debugger Utility ---
+        window.toggleDebug = () => {
+            document.getElementById('debug-panel').classList.toggle('hidden');
+        };
+        window.clearDebug = () => {
+            document.getElementById('debug-logs').innerHTML = '';
+        };
+        function logDebug(msg) {
+            const logs = document.getElementById('debug-logs');
+            if(!logs) return;
+            const time = new Date().toISOString().split('T')[1].slice(0, -1);
+            logs.innerHTML += `<div><span class="text-slate-500">[${time}]</span> ${msg}</div>`;
+            logs.scrollTop = logs.scrollHeight;
+            console.log(`[DEBUG] ${msg}`);
+        }
+
+        // --- Audio Context ---
+        let audioCtx = null;
+        function getAudioCtx() {
+            if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            return audioCtx;
+        }
+
+        function playSynth(type) {
+            try {
+                const ctx = getAudioCtx(); const now = ctx.currentTime;
+                if (type === 'click') {
+                    const osc = ctx.createOscillator(); const gain = ctx.createGain();
+                    osc.frequency.setValueAtTime(580, now); osc.frequency.exponentialRampToValueAtTime(140, now + 0.1);
+                    gain.gain.setValueAtTime(0.12, now); gain.gain.linearRampToValueAtTime(0.01, now + 0.1);
+                    osc.connect(gain); gain.connect(ctx.destination); osc.start(); osc.stop(now + 0.1);
+                } else if (type === 'roll') {
+                    const bufferSize = ctx.sampleRate * 0.08; const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+                    const data = buffer.getChannelData(0); for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
+                    const noise = ctx.createBufferSource(); noise.buffer = buffer;
+                    const filter = ctx.createBiquadFilter(); filter.type = 'bandpass'; filter.frequency.value = 750;
+                    const gain = ctx.createGain(); gain.gain.setValueAtTime(0.08, now); gain.gain.exponentialRampToValueAtTime(0.01, now + 0.08);
+                    noise.connect(filter); filter.connect(gain); gain.connect(ctx.destination); noise.start();
+                } else if (type === 'error') {
+                    const osc = ctx.createOscillator(); const gain = ctx.createGain();
+                    osc.type = 'sawtooth'; osc.frequency.setValueAtTime(120, now); osc.frequency.setValueAtTime(100, now + 0.15);
+                    gain.gain.setValueAtTime(0.15, now); gain.gain.linearRampToValueAtTime(0.01, now + 0.25);
+                    osc.connect(gain); gain.connect(ctx.destination); osc.start(); osc.stop(now + 0.25);
+                } else if (type === 'confirm') {
+                    [261.63, 329.63, 392.00, 523.25].forEach((freq, idx) => {
+                        const osc = ctx.createOscillator(); const gain = ctx.createGain();
+                        osc.frequency.setValueAtTime(freq, now + (idx * 0.05)); gain.gain.setValueAtTime(0.08, now + (idx * 0.05)); gain.gain.exponentialRampToValueAtTime(0.01, now + (idx * 0.05) + 0.08);
+                        osc.connect(gain); gain.connect(ctx.destination); osc.start(now + (idx * 0.05)); osc.stop(now + (idx * 0.05) + 0.1);
+                    });
+                }
+            } catch (e) {}
+        }
+
+        const COLORS = ['G', 'Y', 'B', 'R', 'O'];
+        const COL_POW = [5, 3, 3, 3, 2, 2, 2, 1, 2, 2, 2, 3, 3, 3, 5];
+        const ROWS = 7, COLS = 15;
+
+        let gameState = {
+            grid: [], turnsLeft: 30, wildcardsUsed: 0,
+            diceRolled: false, selectedColorDie: null, selectedColorIdx: null, selectedNumDie: null, selectedNumIdx: null,
+            firstTurnDone: false, completedCols: [], completedColors: [], currentScore: 0,
+            diceColors: [], diceNums: [],
+            players: {}, activeRollerId: null, phase: "all_choosing", lockedDice: null,
+            localPlayers: [], currentPlayerViewIndex: 0, localPlayersDone: 0
+        };
+
+        // --- Deep Local Storage Logic ---
+        function saveGameState(trigger = "manual") {
+            if (gameMode === 'online') return; 
+            try {
+                const payload = JSON.stringify({ gameMode, gameState });
+                localStorage.setItem(SAVE_KEY, payload);
+                logDebug(`[${trigger}] State saved. Payload: ${payload.length} bytes. Turns left: ${gameState.turnsLeft}`);
+            } catch(e) { 
+                logDebug(`<span class="text-rose-400">Save error: ${e.message}</span>`); 
+            }
+        }
+
+        function loadGameState() {
+            try {
+                let saved = localStorage.getItem(SAVE_KEY);
+                if (saved) {
+                    logDebug(`Found save data. Size: ${saved.length} bytes.`);
+                    hydrateState(JSON.parse(saved));
+                    logDebug(`Hydration complete. Mode: ${gameMode}`);
+                    return true;
+                } else {
+                    logDebug("No save data found in localStorage.");
+                }
+            } catch(e) { 
+                logDebug(`<span class="text-rose-400">Load error: ${e.message}</span>`); 
+            }
+            return false;
+        }
+
+        function hydrateState(data) {
+            gameMode = data.gameMode || 'solo';
+            gameState = data.gameState;
+            
+            if (gameMode === 'local') {
+                document.getElementById('multiplayer-widget').classList.add('hidden');
+                document.getElementById('btn-reroll').classList.add('hidden');
+                document.getElementById('multiplayer-roster').classList.remove('hidden');
+                document.getElementById('round-indicator').classList.remove('hidden');
+                buildLocalRosterUI();
+            } else {
+                document.getElementById('game-mode-tag').innerText = "Solo Mode"; 
+                document.getElementById('multiplayer-roster').classList.add('hidden');
+                document.getElementById('round-indicator').classList.add('hidden');
+                document.getElementById('btn-reroll').classList.remove('hidden'); 
+            }
+            
+            renderBoard(); 
+            if (gameState.diceRolled) renderDiceTrays(gameState.diceColors, gameState.diceNums, false);
+            else { document.getElementById('color-dice-pool').innerHTML = ''; document.getElementById('num-dice-pool').innerHTML = ''; }
+            updateScoresAndUI();
+        }
+
+        // Visibility listener to catch iframe reload behaviors on mobile
+        document.addEventListener("visibilitychange", () => {
+            logDebug(`Visibility changed to: ${document.visibilityState}`);
+            if (document.visibilityState === 'hidden') saveGameState('visibility_hidden');
+        });
+        window.addEventListener("pagehide", () => saveGameState('pagehide'));
+        window.addEventListener("beforeunload", () => saveGameState('beforeunload'));
+
+        window.addEventListener('load', async () => {
+            logDebug("Window loaded. Checking initialization...");
+            await initFirebaseAndAuth();
+            if (!loadGameState() || !gameState.grid || !gameState.grid.length) {
+                logDebug("Proceeding to fresh board generation.");
+                window.regenerateBoard();
+            }
+        });
+
+        window.switchSetupTab = (mode) => {
+            playSynth('click');
+            if(mode === 'local') {
+                document.getElementById('tab-local').classList.replace('text-slate-500', 'text-amber-400');
+                document.getElementById('tab-online').classList.replace('text-amber-400', 'text-slate-500');
+                document.getElementById('setup-local').classList.replace('hidden', 'flex');
+                document.getElementById('setup-online').classList.replace('flex', 'hidden');
+            } else {
+                document.getElementById('tab-online').classList.replace('text-slate-500', 'text-amber-400');
+                document.getElementById('tab-local').classList.replace('text-amber-400', 'text-slate-500');
+                document.getElementById('setup-online').classList.replace('hidden', 'flex');
+                document.getElementById('setup-local').classList.replace('flex', 'hidden');
+            }
+        }
+
+        window.toggleModeSelector = () => {
+            playSynth('click');
+            document.getElementById('multiplayer-widget').classList.toggle('hidden');
+        };
+
+        window.regenerateBoard = () => {
+            if (gameMode !== 'solo') return;
+            localStorage.removeItem(SAVE_KEY);
+            logDebug("Cache cleared manually. Generating new board.");
+            document.getElementById('btn-reroll').disabled = true;
+            document.getElementById('btn-roll').disabled = true;
+            setStatus("Optimizing layout...");
+            generateBoardSAAndInit();
+        }
+
+        // --- ASYNC SIMULATED ANNEALING ---
+        async function generateBoardSAAndInit() {
+            await new Promise(r => setTimeout(r, 10));
+            let start = performance.now();
+            let grid = createInitialConstraintGrid();
+            let currentScore = evaluateGrid(grid);
+            let bestGrid = copyGrid(grid);
+            let bestScore = currentScore;
+            
+            let temp = 100.0, coolingRate = 0.9995, iterations = 0;
+            while (bestScore > 0 && iterations < 100000) {
+                for (let i = 0; i < 2000 && bestScore > 0; i++) {
+                    let r1 = Math.floor(Math.random() * ROWS), c1 = Math.floor(Math.random() * COLS);
+                    let r2 = Math.floor(Math.random() * ROWS), c2 = Math.floor(Math.random() * COLS);
+
+                    if (grid[r1][c1] !== grid[r2][c2] && isValidSwap(grid, r1, c1, r2, c2)) {
+                        let tmp = grid[r1][c1]; grid[r1][c1] = grid[r2][c2]; grid[r2][c2] = tmp;
+                        let newScore = evaluateGrid(grid);
+                        
+                        if (newScore < currentScore || Math.exp((currentScore - newScore) / temp) > Math.random()) {
+                            currentScore = newScore;
+                            if (newScore < bestScore) { bestScore = newScore; bestGrid = copyGrid(grid); }
+                        } else {
+                            grid[r2][c2] = grid[r1][c1]; grid[r1][c1] = tmp;
+                        }
+                    }
+                    temp *= coolingRate; iterations++;
+                }
+                await new Promise(r => setTimeout(r, 0)); 
+            }
+
+            gameState.grid = Array(ROWS).fill(null).map(()=>Array(COLS).fill(null));
+            for(let r=0; r<ROWS; r++){
+                for(let c=0; c<COLS; c++){
+                    gameState.grid[r][c] = { color: bestGrid[r][c], crossed: false, tempCrossed: false, star: false, r, c };
+                }
+            }
+            
+            assignBacktrackingStars();
+            logDebug(`Board generated in ${Math.round(performance.now() - start)}ms.`);
+            
+            if (gameMode === 'local') finalizeLocalSetup();
+            else initLocalSoloGame();
+            
+            saveGameState('generation_complete');
+        }
+
+        function createInitialConstraintGrid() {
+            let g = Array(ROWS).fill(null).map(() => Array(COLS).fill(null));
+            let colorPool = [];
+            COLORS.forEach(c => { for(let i=0; i<6; i++) colorPool.push(c); });
+            for (let c = 0; c < COLS; c++) {
+                let colColors = [...COLORS];
+                colColors.push(colorPool.pop(), colorPool.pop());
+                colColors.sort(() => Math.random() - 0.5);
+                for(let r=0; r<ROWS; r++) g[r][c] = colColors[r];
+            }
+            return g;
+        }
+
+        function isValidSwap(g, r1, c1, r2, c2) {
+            if (c1 === c2) return true;
+            let cA = g[r1][c1], cB = g[r2][c2];
+            if (cA === cB) return true;
+            let countA = 0, countB = 0;
+            for(let r=0; r<7; r++) {
+                if(g[r][c1] === cA) countA++;
+                if(g[r][c2] === cB) countB++;
+            }
+            if (countA === 1 || countB === 1) return false; 
+            return true;
+        }
+
+        function evaluateGrid(g) {
+            let score = 0;
+            let visited = new Uint8Array(105);
+            let blockIdGrid = new Int16Array(105);
+            let targets = [6,5,4,3,2,1];
+            let blockId = 0;
+
+            for (let cIdx = 0; cIdx < 5; cIdx++) {
+                let c = COLORS[cIdx];
+                let blocks = [];
+                for (let i = 0; i < 105; i++) {
+                    let r = Math.floor(i / 15), col = i % 15;
+                    if (g[r][col] === c && !visited[i]) {
+                        let size = 0, q = [i], head = 0;
+                        visited[i] = 1;
+                        while (head < q.length) {
+                            let curr = q[head++]; size++;
+                            blockIdGrid[curr] = blockId;
+                            let cr = Math.floor(curr / 15), cc = curr % 15;
+                            if (cr > 0 && g[cr-1][cc] === c && !visited[curr-15]) { visited[curr-15]=1; q.push(curr-15); }
+                            if (cr < 6 && g[cr+1][cc] === c && !visited[curr+15]) { visited[curr+15]=1; q.push(curr+15); }
+                            if (cc > 0 && g[cr][cc-1] === c && !visited[curr-1]) { visited[curr-1]=1; q.push(curr-1); }
+                            if (cc < 14 && g[cr][cc+1] === c && !visited[curr+1]) { visited[curr+1]=1; q.push(curr+1); }
+                        }
+                        blocks.push(size);
+                        blockId++;
+                    }
+                }
+                blocks.sort((a,b) => b-a);
+                for (let i=0; i < Math.max(blocks.length, 6); i++) {
+                    let bv = i < blocks.length ? blocks[i] : 0;
+                    let tv = i < 6 ? targets[i] : 0;
+                    score += Math.abs(bv - tv) * 10;
+                }
+            }
+
+            for (let col=0; col<15; col++) {
+                let colBlocks = [[], [], [], [], []];
+                for (let r=0; r<7; r++) {
+                    let cIdx = COLORS.indexOf(g[r][col]);
+                    let bId = blockIdGrid[r * 15 + col];
+                    if (!colBlocks[cIdx].includes(bId)) colBlocks[cIdx].push(bId);
+                }
+                for (let i=0; i<5; i++) {
+                    if (colBlocks[i].length > 1) score += (colBlocks[i].length - 1) * 30; 
+                }
+            }
+            return score;
+        }
+
+        function copyGrid(g) { return g.map(row => [...row]); }
+
+        function assignBacktrackingStars() {
+            let blockIds = Array(ROWS).fill(0).map(()=>Array(COLS).fill(-1));
+            let blockId = 0;
+            for (let r=0; r<ROWS; r++) {
+                for (let c=0; c<COLS; c++) {
+                    if (blockIds[r][c] === -1) {
+                        let color = gameState.grid[r][c].color;
+                        let q = [[r,c]]; blockIds[r][c] = blockId; let head = 0;
+                        while(head < q.length) {
+                            let [cr, cc] = q[head++];
+                            [[-1,0],[1,0],[0,-1],[0,1]].forEach(([dr,dc]) => {
+                                let nr=cr+dr, nc=cc+dc;
+                                if (nr>=0 && nr<ROWS && nc>=0 && nc<COLS && gameState.grid[nr][nc].color === color && blockIds[nr][nc] === -1) {
+                                    blockIds[nr][nc] = blockId; q.push([nr,nc]);
+                                }
+                            });
+                        }
+                        blockId++;
+                    }
+                }
+            }
+
+            let colorCounts = { 'G':0, 'Y':0, 'B':0, 'R':0, 'O':0 };
+            let blockHasStar = new Set();
+            let rowOrders = Array(COLS).fill(0).map(() => [0,1,2,3,4,5,6].sort(() => Math.random() - 0.5));
+
+            function backtrack(col) {
+                if (col === COLS) return true;
+                for (let i=0; i<ROWS; i++) {
+                    let r = rowOrders[col][i];
+                    let cell = gameState.grid[r][col];
+                    let cColor = cell.color, bId = blockIds[r][col];
+                    
+                    if (colorCounts[cColor] < 3 && !blockHasStar.has(bId)) {
+                        cell.star = true; colorCounts[cColor]++; blockHasStar.add(bId);
+                        if (backtrack(col + 1)) return true;
+                        cell.star = false; colorCounts[cColor]--; blockHasStar.delete(bId);
+                    }
+                }
+                return false;
+            }
+
+            gameState.grid.forEach(row => row.forEach(cell => cell.star = false));
+            let success = backtrack(0);
+            
+            if (!success) {
+                let starPool = []; COLORS.forEach(c => { for(let i=0; i<3; i++) starPool.push(c); });
+                starPool.sort(()=>Math.random()-0.5);
+                for (let c=0; c<COLS; c++) {
+                    let targetC = starPool[c]; let matches = [];
+                    for(let r=0; r<ROWS; r++) if(gameState.grid[r][c].color === targetC) matches.push(gameState.grid[r][c]);
+                    if(matches.length > 0) matches[Math.floor(Math.random()*matches.length)].star = true;
+                    else gameState.grid[Math.floor(Math.random()*ROWS)][c].star = true;
+                }
+            }
+        }
+
+        // --- Local Multiplayer Management ---
+        window.startLocalMultiplayer = () => {
+            let namesStr = document.getElementById('local-players-input').value.trim();
+            if(!namesStr) { openModal("Error", "Enter player names separated by commas."); return; }
+            let names = namesStr.split(',').map(n => n.trim()).filter(n => n);
+            if(names.length < 2) { openModal("Error", "Need at least 2 players for local multiplayer."); return; }
+            
+            gameMode = 'local';
+            document.getElementById('multiplayer-widget').classList.add('hidden');
+            document.getElementById('btn-reroll').classList.add('hidden');
+            
+            gameState.localPlayers = names.map((name, i) => ({
+                id: i, name: name, crossed: [], wildcardsUsed: 0, completedCols: [], completedColors: [], score: 0
+            }));
+            
+            gameState.activeRollerId = 0;
+            gameState.currentPlayerViewIndex = 0;
+            gameState.localPlayersDone = 0;
+            gameState.turnsLeft = 30;
+            gameState.lockedDice = null;
+            
+            logDebug("Local multiplayer initialized.");
+            generateBoardSAAndInit();
+        }
+
+        function finalizeLocalSetup() {
+            document.getElementById('multiplayer-roster').classList.remove('hidden');
+            document.getElementById('round-indicator').classList.remove('hidden');
+            loadLocalPlayerState(0);
+        }
+
+        function saveLocalPlayerState() {
+            let p = gameState.localPlayers[gameState.currentPlayerViewIndex];
+            p.crossed = [];
+            gameState.grid.forEach(r => r.forEach(c => { if(c.crossed) p.crossed.push(`${c.r},${c.c}`); }));
+            p.wildcardsUsed = gameState.wildcardsUsed;
+            p.completedCols = gameState.completedCols;
+            p.completedColors = gameState.completedColors;
+            p.score = gameState.currentScore;
+        }
+
+        function loadLocalPlayerState(idx) {
+            let p = gameState.localPlayers[idx];
+            gameState.grid.forEach(r => r.forEach(c => c.crossed = p.crossed.includes(`${c.r},${c.c}`)));
+            gameState.wildcardsUsed = p.wildcardsUsed;
+            gameState.completedCols = p.completedCols || [];
+            gameState.completedColors = p.completedColors || [];
+            gameState.currentScore = p.score;
+            gameState.firstTurnDone = p.crossed.length > 0;
+            
+            gameState.selectedColorDie = null; gameState.selectedColorIdx = null;
+            gameState.selectedNumDie = null; gameState.selectedNumIdx = null;
+
+            buildLocalRosterUI();
+            if(gameState.diceRolled) renderDiceTrays(gameState.diceColors, gameState.diceNums, false);
+            else { document.getElementById('color-dice-pool').innerHTML = ''; document.getElementById('num-dice-pool').innerHTML = ''; }
+            
+            renderBoard();
+            updateScoresAndUI();
+            saveGameState('local_player_switch');
+        }
+
+        function buildLocalRosterUI() {
+            let roundNum = 31 - gameState.turnsLeft;
+            document.getElementById('game-mode-tag').innerText = `Local MP - RND ${roundNum}`;
+            document.getElementById('round-indicator').innerText = `RND ${roundNum}`;
+            
+            if(roundNum <= 3) { document.getElementById('round-indicator').classList.add('bg-emerald-500/20', 'text-emerald-400'); document.getElementById('round-indicator').classList.remove('bg-slate-800', 'text-slate-300'); }
+            else { document.getElementById('round-indicator').classList.add('bg-slate-800', 'text-slate-300'); document.getElementById('round-indicator').classList.remove('bg-emerald-500/20', 'text-emerald-400'); }
+
+            const list = document.getElementById('roster-list'); list.innerHTML = '';
+            gameState.localPlayers.forEach(p => {
+                const isView = p.id === gameState.currentPlayerViewIndex;
+                const isRoller = p.id === gameState.activeRollerId;
+                list.innerHTML += `<div class="flex items-center gap-1.5 bg-slate-950/60 px-2 py-1 rounded-lg border text-[10px] font-bold ${isView ? 'border-amber-400 text-amber-300' : 'border-slate-800 text-slate-300'}">
+                    <span>${p.name} (${p.score})</span>
+                    ${isRoller ? '<span class="text-[8px] uppercase bg-emerald-500 text-slate-950 px-1 rounded">Roller</span>' : ''}</div>`;
+            });
+
+            const amActive = gameState.currentPlayerViewIndex === gameState.activeRollerId;
+            if (!gameState.diceRolled) {
+                if (amActive) setStatus(`<b>Your turn to roll!</b>`);
+            } else {
+                if (amActive) setStatus(`Confirm your 2 dice to lock them.`);
+                else {
+                    if (roundNum <= 3) setStatus(`Round 1-3: Pick any 2 dice!`);
+                    else setStatus(`Pick from remaining 4 dice.`);
+                }
+            }
+        }
+
+        function finalizeLocalCommit(passed) {
+            saveLocalPlayerState();
+
+            let roundNum = 31 - gameState.turnsLeft;
+            if (gameState.currentPlayerViewIndex === gameState.activeRollerId && roundNum > 3) {
+                gameState.lockedDice = passed ? null : {
+                    cIdx: gameState.selectedColorIdx,
+                    nIdx: gameState.selectedNumIdx
+                };
+            }
+
+            gameState.localPlayersDone++;
+            
+            if (gameState.localPlayersDone < gameState.localPlayers.length) {
+                gameState.currentPlayerViewIndex = (gameState.currentPlayerViewIndex + 1) % gameState.localPlayers.length;
+                saveGameState('local_commit_pass');
+                showPassOverlay();
+            } else {
+                gameState.localPlayersDone = 0;
+                gameState.activeRollerId = (gameState.activeRollerId + 1) % gameState.localPlayers.length;
+                gameState.currentPlayerViewIndex = gameState.activeRollerId;
+                gameState.turnsLeft--;
+                gameState.diceRolled = false;
+                gameState.lockedDice = null;
+
+                let gameEnded = gameState.turnsLeft <= 0 || gameState.localPlayers.some(p => p.completedColors.length >= 2);
+                saveGameState('local_commit_round_end');
+                
+                if (gameEnded) endLocalMultiplayerGame();
+                else showPassOverlay();
+            }
+        }
+
+        function showPassOverlay() {
+            let nextName = gameState.localPlayers[gameState.currentPlayerViewIndex].name;
+            document.getElementById('pass-subtitle').innerText = `Pass device to ${nextName}.`;
+            const overlay = document.getElementById('pass-overlay');
+            overlay.classList.remove('hidden');
+            setTimeout(() => overlay.classList.add('opacity-100'), 10);
+        }
+
+        window.acceptPass = () => {
+            playSynth('click');
+            const overlay = document.getElementById('pass-overlay');
+            overlay.classList.remove('opacity-100');
+            setTimeout(() => {
+                overlay.classList.add('hidden');
+                loadLocalPlayerState(gameState.currentPlayerViewIndex);
+            }, 300);
+        }
+
+        function endLocalMultiplayerGame() {
+            playSynth('fanfare'); confetti({ particleCount: 250, spread: 100 });
+            let sortedPlayers = [...gameState.localPlayers].sort((a,b) => b.score - a.score);
+            let scoreHtml = sortedPlayers.map((p, i) => `
+                <div class="flex justify-between items-center bg-slate-800 p-2 rounded-lg mb-1">
+                    <span class="font-bold ${i===0 ? 'text-amber-400' : 'text-slate-200'}">${i+1}. ${p.name}</span>
+                    <span class="fancy-font text-lg text-emerald-400">${p.score}</span>
+                </div>
+            `).join('');
+            openModal("Game Over!", `<div class="mb-2 text-slate-300">Final Results:</div>${scoreHtml}`);
+            initLocalSoloGame();
+        }
+
+        // --- Core Base Interactions ---
+        function initLocalSoloGame() {
+            gameMode = 'solo'; currentLobbyId = null; if (lobbyUnsubscribe) { lobbyUnsubscribe(); lobbyUnsubscribe = null; }
+            document.getElementById('game-mode-tag').innerText = "Solo Mode"; document.getElementById('multiplayer-roster').classList.add('hidden');
+            document.getElementById('round-indicator').classList.add('hidden');
+            document.getElementById('btn-reroll').classList.remove('hidden'); document.getElementById('btn-reroll').disabled = false;
+            gameState.turnsLeft = 30; gameState.wildcardsUsed = 0; gameState.diceRolled = false; gameState.firstTurnDone = false;
+            gameState.completedCols = []; gameState.completedColors = []; gameState.currentScore = 0;
+            gameState.grid.forEach(r=>r.forEach(c=>{ c.crossed=false; c.tempCrossed=false; }));
+            updateScoresAndUI(); setStatus("Ready! Roll the dice to begin.");
+            saveGameState('init_solo');
+            renderBoard();
+        }
+
+        window.rollDice = async () => {
+            if (gameState.diceRolled || gameState.turnsLeft <= 0) return;
+            getAudioCtx();
+            
+            if (gameMode === 'online' && localPlayerId !== gameState.activeRollerId) { openModal("Lock", "Only the Active Roller rolls."); return; }
+            if (gameMode === 'local' && gameState.currentPlayerViewIndex !== gameState.activeRollerId) return;
+
+            clearAllTempCrosses(); gameState.diceRolled = true;
+            let rolls = 0; playSynth('roll');
+            let poolC = ['G','Y','B','R','O','?'], poolN = ['1','2','3','4','5','?'];
+
+            const int = setInterval(async () => {
+                rolls++; playSynth('roll');
+                renderDiceTrays(Array(3).fill(null).map(()=>poolC[Math.floor(Math.random()*6)]), Array(3).fill(null).map(()=>poolN[Math.floor(Math.random()*6)]), true);
+                if (rolls >= 8) {
+                    clearInterval(int);
+                    const fc = Array(3).fill(null).map(()=>poolC[Math.floor(Math.random()*6)]);
+                    const fn = Array(3).fill(null).map(()=>poolN[Math.floor(Math.random()*6)]);
+
+                    if (gameMode === 'online') {
+                        const roundNum = 31 - gameState.turnsLeft;
+                        const nextPhase = (roundNum <= 3) ? "all_choosing" : "active_choosing";
+                        const ref = window.firebaseModules.doc(db, 'artifacts', appId, 'public', 'data', 'lobbies', currentLobbyId);
+                        await window.firebaseModules.updateDoc(ref, { rolledDice: { colors: fc, nums: fn }, phase: nextPhase });
+                    } else {
+                        gameState.diceColors = fc; gameState.diceNums = fn; gameState.phase = "all_choosing";
+                        renderDiceTrays(fc, fn, false); setStatus("Select 1 Color & 1 Number die."); updateScoresAndUI();
+                        saveGameState('dice_rolled');
+                    }
+                }
+            }, 75);
+        }
+
+        window.selectDie = (type, val, index, el) => {
+            playSynth('click');
+            if (type === 'color') {
+                document.querySelectorAll('#color-dice-pool button').forEach(b => b.classList.remove('ring-[2.5px]', 'ring-amber-400', 'scale-110'));
+                gameState.selectedColorDie = val; gameState.selectedColorIdx = index; el.classList.add('ring-[2.5px]', 'ring-amber-400', 'scale-110');
+            } else {
+                document.querySelectorAll('#num-dice-pool button').forEach(b => b.classList.remove('ring-[2.5px]', 'ring-amber-400', 'scale-110'));
+                gameState.selectedNumDie = val; gameState.selectedNumIdx = index; el.classList.add('ring-[2.5px]', 'ring-amber-400', 'scale-110');
+            }
+            clearAllTempCrosses(); renderBoard(); updateScoresAndUI();
+            saveGameState('die_selected');
+        }
+
+        function renderDiceTrays(colorVals, numVals, isAnimating) {
+            const cPool = document.getElementById('color-dice-pool'); cPool.innerHTML = '';
+            colorVals.forEach((v, i) => {
+                const b = document.createElement('button');
+                b.className = `w-8 h-8 md:w-10 md:h-10 rounded-lg font-bold text-sm md:text-lg relative flex items-center justify-center transition-transform hover:scale-105 shadow-md ${isAnimating?'animate-shake':''}`;
+                if(v==='?') { b.className += ' bg-gradient-to-tr from-rose-500 via-amber-400 to-indigo-500 text-slate-950 font-black border border-slate-700 shadow-sm'; b.innerText='?'; }
+                else { b.className += ` bg-color-${v} text-slate-950 border border-slate-950/30`; b.innerText=v; }
+                if(!isAnimating) b.onclick = () => window.selectDie('color', v, i, b);
+                
+                if(!isAnimating && gameState.selectedColorIdx === i) b.classList.add('ring-[2.5px]', 'ring-amber-400', 'scale-110');
+                cPool.appendChild(b);
+            });
+            const nPool = document.getElementById('num-dice-pool'); nPool.innerHTML = '';
+            numVals.forEach((v, i) => {
+                const b = document.createElement('button');
+                b.className = `w-8 h-8 md:w-10 md:h-10 bg-slate-800 text-slate-100 border border-slate-700 rounded-lg font-bold text-sm md:text-lg relative flex items-center justify-center transition-transform hover:scale-105 shadow-md ${isAnimating?'animate-shake':''}`;
+                if(v==='?') { b.className += ' border-amber-400 text-amber-400 font-extrabold'; b.innerText='?'; }
+                else { b.innerText=v; }
+                if(!isAnimating) b.onclick = () => window.selectDie('num', v, i, b);
+                
+                if(!isAnimating && gameState.selectedNumIdx === i) b.classList.add('ring-[2.5px]', 'ring-amber-400', 'scale-110');
+                nPool.appendChild(b);
+            });
+            
+            if (!isAnimating && gameState.lockedDice) {
+                let applyLock = false;
+                if (gameMode === 'local' && gameState.currentPlayerViewIndex !== gameState.activeRollerId) applyLock = true;
+                if (gameMode === 'online' && localPlayerId !== gameState.activeRollerId) applyLock = true;
+                
+                if (applyLock) {
+                    if (gameState.lockedDice.cIdx !== null) document.querySelectorAll('#color-dice-pool button')[gameState.lockedDice.cIdx].classList.add('opacity-30', 'pointer-events-none', 'ring-2', 'ring-rose-500');
+                    if (gameState.lockedDice.nIdx !== null) document.querySelectorAll('#num-dice-pool button')[gameState.lockedDice.nIdx].classList.add('opacity-30', 'pointer-events-none', 'ring-2', 'ring-rose-500');
+                }
+            }
+        }
+
+        window.handleCellClick = (r, c) => {
+            if (!gameState.diceRolled || !gameState.selectedColorDie || !gameState.selectedNumDie || gameState.grid[r][c].crossed) return;
+            gameState.grid[r][c].tempCrossed = !gameState.grid[r][c].tempCrossed;
+            playSynth('click'); renderBoard(); updateScoresAndUI();
+            saveGameState('cell_clicked');
+        }
+
+        function clearAllTempCrosses() { gameState.grid.forEach(row => row.forEach(c => c.tempCrossed = false)); }
+
+        function getTurnValidityError() {
+            let temps = []; gameState.grid.forEach(r => r.forEach(c => { if(c.tempCrossed) temps.push(c); }));
+            if (temps.length === 0) return "No cells selected.";
+
+            let wCost = (gameState.selectedColorDie === '?' ? 1 : 0) + (gameState.selectedNumDie === '?' ? 1 : 0);
+            if (gameState.wildcardsUsed + wCost > 8) return "Not enough wildcards left.";
+
+            let targetC = gameState.selectedNumDie === '?' ? temps.length : parseInt(gameState.selectedNumDie);
+            if (temps.length !== targetC) return `Select exactly ${targetC} cell(s).`;
+
+            let targetCol = gameState.selectedColorDie === '?' ? temps[0].color : gameState.selectedColorDie;
+            for(let t of temps) if(t.color !== targetCol) return `All cells must be ${targetCol}.`;
+
+            let visited = new Set(), hasAnchor = false;
+            function dfs(c) {
+                visited.add(`${c.r},${c.c}`);
+                if (!gameState.firstTurnDone && c.c === 7) hasAnchor = true;
+                if (gameState.firstTurnDone && hasAdj(c.r, c.c)) hasAnchor = true;
+                [[-1,0],[1,0],[0,-1],[0,1]].forEach(([dr,dc]) => {
+                    let nr=c.r+dr, nc=c.c+dc;
+                    if(nr>=0 && nr<ROWS && nc>=0 && nc<COLS && gameState.grid[nr][nc].tempCrossed && !visited.has(`${nr},${nc}`)) dfs(gameState.grid[nr][nc]);
+                });
+            }
+            dfs(temps[0]);
+            
+            if (visited.size !== temps.length) return "Selection must form a contiguous shape.";
+            if (!hasAnchor) return gameState.firstTurnDone ? "Must touch a previously crossed cell." : "First turn must touch column H.";
+
+            return null;
+        }
+
+        function hasAdj(r, c) {
+            for(let [dr,dc] of [[-1,0],[1,0],[0,-1],[0,1]]) {
+                let nr=r+dr, nc=c+dc;
+                if(nr>=0 && nr<ROWS && nc>=0 && nc<COLS && gameState.grid[nr][nc].crossed) return true;
+            } return false;
+        }
+
+        window.confirmTurn = async () => {
+            if (getTurnValidityError() !== null) return;
+            if (gameState.selectedColorDie === '?') gameState.wildcardsUsed++;
+            if (gameState.selectedNumDie === '?') gameState.wildcardsUsed++;
+
+            gameState.grid.forEach(r => r.forEach(c => { if(c.tempCrossed) { c.crossed = true; c.tempCrossed = false; } }));
+            playSynth('confirm'); gameState.firstTurnDone = true;
+            if(evalGlobalCompletions()) { playSynth('fanfare'); confetti({particleCount:140, spread:80, origin:{y:0.6}}); }
+            calcScore();
+
+            if (gameMode === 'online') await finalizeOnlineCommit(false);
+            else if (gameMode === 'local') finalizeLocalCommit(false);
+            else endSoloRound();
+        }
+
+        window.passTurn = async () => {
+            clearAllTempCrosses(); playSynth('click');
+            if (gameMode === 'online') await finalizeOnlineCommit(true);
+            else if (gameMode === 'local') finalizeLocalCommit(true);
+            else endSoloRound();
+        }
+
+        function endSoloRound() {
+            gameState.turnsLeft--; gameState.diceRolled = false; 
+            gameState.selectedColorDie = null; gameState.selectedColorIdx = null; 
+            gameState.selectedNumDie = null; gameState.selectedNumIdx = null;
+            
+            document.getElementById('color-dice-pool').innerHTML = ''; document.getElementById('num-dice-pool').innerHTML = '';
+            if (gameState.turnsLeft <= 0 || gameState.completedColors.length >= 2) {
+                playSynth('fanfare'); confetti({ particleCount: 180, spread: 85 });
+                openModal("Match Complete!", `Solo Game complete. Final Score: <b class="text-amber-400 text-xl">${gameState.currentScore}</b>!`);
+                initLocalSoloGame();
+            } else {
+                updateScoresAndUI();
+                saveGameState('solo_round_end');
+            }
+        }
+
+        function renderBoard() {
+            const cont = document.getElementById('grid-container'); cont.innerHTML = '';
+            for(let r=0; r<ROWS; r++){
+                for(let c=0; c<COLS; c++){
+                    let cell = gameState.grid[r][c];
+                    let btn = document.createElement('button');
+                    btn.className = `w-full aspect-square border-[1.5px] sm:border-[2px] border-slate-950 rounded-md sm:rounded-lg relative flex items-center justify-center transition-all duration-100 hover:scale-105 active:scale-95 bg-color-${cell.color} ${c===7?'ring-[1.5px] ring-amber-500/60 ring-offset-1 ring-offset-slate-900':''}`;
+                    if(cell.star) btn.innerHTML = `<span class="text-slate-950 font-black text-xs md:text-sm drop-shadow-sm">★</span>`;
+                    if(cell.crossed) { btn.innerHTML = `<span class="absolute inset-0 flex items-center justify-center text-slate-950 font-black text-sm md:text-lg select-none leading-none">✕</span>`; btn.classList.add('opacity-75', 'brightness-75'); }
+                    else if(cell.tempCrossed) { btn.innerHTML = `<span class="absolute inset-0 flex items-center justify-center text-amber-400 font-black text-sm md:text-lg select-none leading-none animate-pulse">✕</span>`; btn.classList.add('ring-[1.5px]', 'ring-amber-400'); }
+                    btn.onclick = () => window.handleCellClick(r,c);
+                    cont.appendChild(btn);
+                }
+            }
+            const pts = document.getElementById('column-points-container'); pts.innerHTML = '';
+            for(let c=0; c<COLS; c++) pts.innerHTML += `<div class="text-center p-0.5 md:p-1 rounded font-black text-[9px] md:text-[11px] ${gameState.completedCols.includes(c)?'bg-emerald-500/20 text-emerald-400 line-through':'bg-slate-800 text-slate-300'}">${COL_POW[c]}</div>`;
+
+            const cb = document.getElementById('color-bonus-track'); cb.innerHTML = '';
+            COLORS.forEach(c => cb.innerHTML += `<div class="flex justify-between items-center bg-slate-950/40 p-1 md:p-1.5 rounded-lg border border-slate-800/60 ${gameState.completedColors.includes(c)?'opacity-40':''}"><div class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-color-${c}"></span><span class="font-bold text-[9px] md:text-[10px] text-slate-300">All ${c}</span></div><span class="font-black text-[9px] md:text-[10px] ${gameState.completedColors.includes(c)?'text-emerald-400 line-through':'text-amber-400'}">+5</span></div>`);
+
+            const wt = document.getElementById('wildcard-track'); wt.innerHTML = '';
+            for(let i=1; i<=8; i++) wt.innerHTML += `<div class="aspect-square rounded flex items-center justify-center font-bold text-[10px] ${gameState.wildcardsUsed>=i?'bg-slate-800 border-slate-700 text-slate-500 line-through':'bg-amber-500/15 border-amber-500/40 text-amber-400 border'}">!</div>`;
+            document.getElementById('wildcards-rem').innerText = `${8 - gameState.wildcardsUsed} Left`;
+        }
+
+        function evalGlobalCompletions() {
+            let u = false;
+            for(let c=0; c<COLS; c++) {
+                if(!gameState.completedCols.includes(c)) {
+                    let full=true; for(let r=0; r<ROWS; r++) if(!gameState.grid[r][c].crossed) full=false;
+                    if(full) { gameState.completedCols.push(c); u=true; }
+                }
+            }
+            COLORS.forEach(c => {
+                if(!gameState.completedColors.includes(c)) {
+                    let full=true; gameState.grid.forEach(row=>row.forEach(cell=>{ if(cell.color===c && !cell.crossed) full=false; }));
+                    if(full) { gameState.completedColors.push(c); u=true; }
+                }
+            }); return u;
+        }
+
+        function calcScore() {
+            let cS = 0; gameState.completedCols.forEach(c => cS += COL_POW[c]);
+            let colS = gameState.completedColors.length * 5, wS = 8 - gameState.wildcardsUsed;
+            let stars = 0; gameState.grid.forEach(r => r.forEach(c => { if(c.star && !c.crossed) stars++; }));
+            let sP = stars * -2;
+            gameState.currentScore = cS + colS + wS + sP;
+
+            document.getElementById('score-breakdown-cols').innerText = `+${cS}`;
+            document.getElementById('score-breakdown-colors').innerText = `+${colS}`;
+            document.getElementById('score-breakdown-wild').innerText = `+${wS}`;
+            document.getElementById('score-breakdown-stars').innerText = `${sP}`;
+            document.getElementById('score-breakdown-total').innerText = `${gameState.currentScore}`;
+            document.getElementById('score-counter').innerText = gameState.currentScore;
+        }
+
+        function updateScoresAndUI() {
+            document.getElementById('turn-counter').innerText = `${gameState.turnsLeft}`;
+            const bR = document.getElementById('btn-roll'), bC = document.getElementById('btn-confirm'), bP = document.getElementById('btn-pass');
+
+            let rDisabled = gameState.diceRolled || gameState.turnsLeft <= 0;
+            if (gameMode === 'online' && (localPlayerId !== gameState.activeRollerId || gameState.diceRolled)) rDisabled = true;
+            if (gameMode === 'local' && (gameState.currentPlayerViewIndex !== gameState.activeRollerId || gameState.diceRolled)) rDisabled = true;
+
+            if (rDisabled) { bR.disabled=true; bR.classList.add('bg-slate-800','text-slate-600','cursor-not-allowed'); bR.classList.remove('bg-emerald-500','text-slate-950'); }
+            else { bR.disabled=false; bR.classList.remove('bg-slate-800','text-slate-600','cursor-not-allowed'); bR.classList.add('bg-emerald-500','text-slate-950'); }
+
+            let errMsg = getTurnValidityError();
+            let cDisabled = errMsg !== null;
+            
+            if (gameState.lockedDice) {
+                let applyLock = false;
+                if (gameMode === 'online' && gameState.phase === "active_choosing" && localPlayerId !== gameState.activeRollerId) applyLock = true;
+                if (gameMode === 'local' && gameState.currentPlayerViewIndex !== gameState.activeRollerId) applyLock = true;
+
+                if (applyLock) {
+                    if (gameState.selectedColorIdx === gameState.lockedDice.cIdx) cDisabled = true;
+                    if (gameState.selectedNumIdx === gameState.lockedDice.nIdx) cDisabled = true;
+                }
+            }
+
+            if (cDisabled) { bC.disabled=true; bC.classList.add('bg-slate-800','text-slate-600','cursor-not-allowed'); bC.classList.remove('bg-amber-500','text-slate-950','animate-pulse'); }
+            else { bC.disabled=false; bC.classList.remove('bg-slate-800','text-slate-600','cursor-not-allowed'); bC.classList.add('bg-amber-500','text-slate-950','animate-pulse'); }
+
+            bP.disabled = !gameState.diceRolled;
+
+            if (gameState.diceRolled && gameState.selectedColorDie && gameState.selectedNumDie) {
+                if (errMsg) setStatus(`<span class="text-rose-400 font-bold">⚠️ ${errMsg}</span>`);
+                else setStatus(`<span class="text-emerald-400 font-bold">Valid matching! Click Ok.</span>`);
+            } else if (gameState.diceRolled) {
+                if (!gameState.selectedColorDie || !gameState.selectedNumDie) setStatus(`Select 1 Color & 1 Number die.`);
+            }
+
+            renderBoard();
+        }
+
+        // --- Firebase Online Multiplayer Logic ---
+        async function initFirebaseAndAuth() {
+            try {
+                if (typeof __firebase_config === 'undefined' || !__firebase_config) {
+                    logDebug("No __firebase_config provided; local and offline modes active.");
+                    return;
+                }
+                const config = JSON.parse(__firebase_config);
+                firebaseApp = window.firebaseModules.initializeApp(config);
+                auth = window.firebaseModules.getAuth(firebaseApp);
+                db = window.firebaseModules.getFirestore(firebaseApp);
+                let cred;
+                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) cred = await window.firebaseModules.signInWithCustomToken(auth, __initial_auth_token);
+                else cred = await window.firebaseModules.signInAnonymously(auth);
+                localPlayerId = cred.user.uid;
+            } catch (err) {
+                logDebug(`Firebase Init note: ${err.message}`);
+            }
+        }
+
+        window.createMultiplayerLobby = async () => {
+            if (!db) { openModal("Online Setup", "Online multiplayer requires a Firebase config or room relay. Local Pass & Play is fully active!"); return; }
+            playSynth('click');
+            let name = document.getElementById('player-name').value.trim();
+            if (!name) { openModal("Missing Name", "Please input your name."); return; }
+
+            let lobbyId = Math.floor(1000 + Math.random() * 9000).toString(); 
+            currentLobbyId = lobbyId;
+
+            const boardModel = gameState.grid.map(row => row.map(cell => ({ color: cell.color, star: cell.star, r: cell.r, c: cell.c })));
+
+            const newLobby = {
+                lobbyId, currentTurn: 30, activeRollerId: localPlayerId,
+                phase: "waiting_roll", rolledDice: null, lockedDice: null,
+                board: boardModel,
+                players: { [localPlayerId]: { id: localPlayerId, name, score: 0, wildcardsUsed: 0, crossedCells: [], completedCols: [], completedColors: [], hasTakenTurn: false, isHost: true } }
+            };
+
+            const ref = window.firebaseModules.doc(db, 'artifacts', appId, 'public', 'data', 'lobbies', lobbyId);
+            await window.firebaseModules.setDoc(ref, newLobby);
+            gameMode = 'online'; subscribeToLobby(lobbyId); toggleModeSelector();
+            document.getElementById('btn-reroll').classList.add('hidden');
+            openModal("Lobby Hosted!", `Share this Code: <b class="text-amber-400 text-xl">${lobbyId}</b>`);
+            saveGameState('online_lobby_created');
+        }
+
+        window.joinMultiplayerLobby = async () => {
+            if (!db) { openModal("Online Setup", "Online multiplayer requires a Firebase config or room relay. Local Pass & Play is fully active!"); return; }
+            playSynth('click');
+            let name = document.getElementById('player-name').value.trim();
+            let code = document.getElementById('lobby-code').value.trim();
+            if (!name || !code) return;
+
+            const ref = window.firebaseModules.doc(db, 'artifacts', appId, 'public', 'data', 'lobbies', code);
+            const snap = await window.firebaseModules.getDoc(ref);
+            if (!snap.exists()) { openModal("Invalid", "Lobby not found."); return; }
+
+            let lobby = snap.data();
+            lobby.players[localPlayerId] = { id: localPlayerId, name, score: 0, wildcardsUsed: 0, crossedCells: [], completedCols: [], completedColors: [], hasTakenTurn: false, isHost: false };
+            await window.firebaseModules.updateDoc(ref, { players: lobby.players });
+            currentLobbyId = code; gameMode = 'online'; subscribeToLobby(code); toggleModeSelector();
+            document.getElementById('btn-reroll').classList.add('hidden');
+            saveGameState('online_lobby_joined');
+        }
+
+        function subscribeToLobby(id) {
+            if (lobbyUnsubscribe) lobbyUnsubscribe();
+            const ref = window.firebaseModules.doc(db, 'artifacts', appId, 'public', 'data', 'lobbies', id);
+            lobbyUnsubscribe = window.firebaseModules.onSnapshot(ref, (snap) => {
+                if (!snap.exists()) return; syncLobby(snap.data());
+            });
+        }
+
+        function syncLobby(lobby) {
+            document.getElementById('game-mode-tag').innerHTML = `Lobby: <span class="text-amber-400 font-bold">${lobby.lobbyId}</span>`;
+            document.getElementById('multiplayer-roster').classList.remove('hidden');
+            
+            if (lobby.board && (!gameState.grid.length || gameState.grid[0][0].color !== lobby.board[0][0].color)) {
+                gameState.grid = lobby.board.map(r => r.map(c => ({...c, crossed: false, tempCrossed: false})));
+            }
+
+            gameState.turnsLeft = lobby.currentTurn;
+            gameState.activeRollerId = lobby.activeRollerId;
+            gameState.players = lobby.players;
+            gameState.phase = lobby.phase;
+            gameState.lockedDice = lobby.lockedDice;
+
+            const roundNum = 31 - lobby.currentTurn;
+            const roundInd = document.getElementById('round-indicator');
+            roundInd.classList.remove('hidden'); roundInd.innerText = `RND ${roundNum}`;
+            if(roundNum <= 3) { roundInd.classList.add('bg-emerald-500/20', 'text-emerald-400'); roundInd.classList.remove('bg-slate-800', 'text-slate-300'); }
+            else { roundInd.classList.add('bg-slate-800', 'text-slate-300'); roundInd.classList.remove('bg-emerald-500/20', 'text-emerald-400'); }
+
+            let myData = lobby.players[localPlayerId];
+            if (myData) {
+                gameState.grid.forEach(r => r.forEach(c => c.crossed = myData.crossedCells.includes(`${c.r},${c.c}`)));
+                gameState.wildcardsUsed = myData.wildcardsUsed;
+                gameState.completedCols = myData.completedCols || [];
+                gameState.completedColors = myData.completedColors || [];
+                gameState.currentScore = myData.score;
+                gameState.firstTurnDone = myData.crossedCells.length > 0;
+            }
+
+            if (lobby.rolledDice) {
+                gameState.diceRolled = true;
+                gameState.diceColors = lobby.rolledDice.colors;
+                gameState.diceNums = lobby.rolledDice.nums;
+                renderDiceTrays(gameState.diceColors, gameState.diceNums, false);
+            } else {
+                gameState.diceRolled = false;
+                gameState.selectedColorDie = null; gameState.selectedColorIdx = null; 
+                gameState.selectedNumDie = null; gameState.selectedNumIdx = null;
+                document.getElementById('color-dice-pool').innerHTML = ''; document.getElementById('num-dice-pool').innerHTML = '';
+            }
+
+            buildOnlineRosterUI(lobby, roundNum);
+            updateScoresAndUI();
+            saveGameState('online_sync');
+        }
+
+        function buildOnlineRosterUI(lobby, roundNum) {
+            const list = document.getElementById('roster-list'); list.innerHTML = '';
+            Object.values(lobby.players).forEach(p => {
+                const isAct = p.id === lobby.activeRollerId;
+                list.innerHTML += `<div class="flex items-center gap-1.5 bg-slate-950/60 px-2 py-1 rounded-lg border text-[10px] font-bold ${isAct ? 'border-amber-400 text-amber-300' : 'border-slate-800 text-slate-300'}">
+                    <span class="w-1.5 h-1.5 rounded-full ${p.hasTakenTurn ? 'bg-emerald-500' : 'bg-rose-500'}"></span>
+                    <span>${p.name} (${p.score})</span>
+                    ${isAct ? '<span class="text-[8px] uppercase bg-amber-400 text-slate-950 px-1 rounded">Rolls</span>' : ''}</div>`;
+            });
+
+            const me = lobby.players[localPlayerId];
+            const amActive = localPlayerId === lobby.activeRollerId;
+            const activeName = lobby.players[lobby.activeRollerId]?.name;
+
+            if (me && me.hasTakenTurn) setStatus(`Waiting...`);
+            else if (lobby.phase === "waiting_roll") {
+                if (amActive) setStatus(`<b>Your turn!</b> Press Roll.`);
+                else setStatus(`Waiting for ${activeName} to roll.`);
+            } else if (lobby.phase === "active_choosing") {
+                if (amActive) setStatus(`Confirm your 2 dice to lock them.`);
+                else setStatus(`${activeName} picking dice...`);
+            } else if (lobby.phase === "all_choosing") {
+                if (roundNum <= 3) setStatus(`Round 1-3: Pick any 2 dice!`);
+                else setStatus(`Pick from remaining 4 dice.`);
+            }
+        }
+
+        async function finalizeOnlineCommit(passed) {
+            const ref = window.firebaseModules.doc(db, 'artifacts', appId, 'public', 'data', 'lobbies', currentLobbyId);
+            const snap = await window.firebaseModules.getDoc(ref);
+            if (!snap.exists()) return;
+            let lobby = snap.data();
+
+            if (gameState.phase === "active_choosing" && localPlayerId === lobby.activeRollerId) {
+                lobby.lockedDice = passed ? null : {
+                    cIdx: gameState.selectedColorIdx,
+                    nIdx: gameState.selectedNumIdx
+                };
+                lobby.phase = "all_choosing";
+                lobby.players[localPlayerId].hasTakenTurn = true;
+            } else {
+                lobby.players[localPlayerId].hasTakenTurn = true;
+            }
+
+            let crossed = []; gameState.grid.forEach(r => r.forEach(c => { if(c.crossed) crossed.push(`${c.r},${c.c}`); }));
+            lobby.players[localPlayerId].crossedCells = crossed;
+            lobby.players[localPlayerId].score = gameState.currentScore;
+            lobby.players[localPlayerId].wildcardsUsed = gameState.wildcardsUsed;
+            lobby.players[localPlayerId].completedCols = gameState.completedCols;
+            lobby.players[localPlayerId].completedColors = gameState.completedColors;
+
+            let allFinished = Object.values(lobby.players).every(p => p.hasTakenTurn);
+            if (allFinished) {
+                let pIds = Object.keys(lobby.players);
+                lobby.activeRollerId = pIds[(pIds.indexOf(lobby.activeRollerId) + 1) % pIds.length];
+                lobby.currentTurn = Math.max(0, lobby.currentTurn - 1);
+                lobby.rolledDice = null; lobby.lockedDice = null; lobby.phase = "waiting_roll";
+                pIds.forEach(id => lobby.players[id].hasTakenTurn = false);
+            }
+            await window.firebaseModules.updateDoc(ref, lobby);
+        }
+    </script>
+
+    <!-- Service Worker Registration -->
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('./sw.js')
+                    .then(reg => console.log('ServiceWorker registered:', reg.scope))
+                    .catch(err => console.log('ServiceWorker registration failed:', err));
+            });
+        }
+    </script>
+</body>
+</html>
