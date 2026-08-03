@@ -1095,7 +1095,6 @@
                 p2pPeer.on('error', (err) => {
                     logDebug(`PeerJS Host Error: ${err.type}`);
                     if (err.type === 'unavailable-id') {
-                        // Retry with new 4-digit code
                         p2pPeer.destroy();
                         window.createMultiplayerLobby();
                     }
@@ -1338,12 +1337,23 @@
         }
     </script>
 
-    <!-- Service Worker Registration -->
+    <!-- Auto-Updating Service Worker Registration -->
     <script>
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {
                 navigator.serviceWorker.register('./sw.js')
-                    .then(reg => console.log('ServiceWorker registered:', reg.scope))
+                    .then(reg => {
+                        console.log('ServiceWorker registered:', reg.scope);
+                        reg.onupdatefound = () => {
+                            const installingWorker = reg.installing;
+                            installingWorker.onstatechange = () => {
+                                if (installingWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                                    console.log('New version available; reloading...');
+                                    window.location.reload();
+                                }
+                            };
+                        };
+                    })
                     .catch(err => console.log('ServiceWorker registration failed:', err));
             });
         }
