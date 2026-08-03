@@ -1,6 +1,6 @@
 {
-  "name": "Encore! Board Game",
-  "short_name": "Encore!",
+  "name": "Ancora! Board Game",
+  "short_name": "Ancora!",
   "description": "Cross-platform mobile & web roll-and-write dice game with real-time multiplayer.",
   "start_url": "./index.html",
   "display": "standalone",

@@ -3,13 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Encore! - Mobile & Web Multiplayer</title>
+    <title>Ancora! - Mobile & Web Multiplayer</title>
     
     <!-- PWA & Mobile Meta Tags -->
     <meta name="theme-color" content="#020617">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="apple-mobile-web-app-title" content="Encore!">
+    <meta name="apple-mobile-web-app-title" content="Ancora!">
     <link rel="manifest" href="manifest.json">
     <link rel="icon" type="image/svg+xml" href="icon.svg">
     <link rel="apple-touch-icon" href="icon.svg">
@@ -127,8 +127,8 @@
 
     <header class="flex-none bg-slate-900/90 border-b border-slate-800 p-2 md:px-4 flex justify-between items-center shadow-md z-10">
         <div class="flex items-center gap-2 md:gap-3">
-            <div class="bg-amber-500 text-slate-950 px-2 py-1 rounded-lg fancy-font text-base md:text-xl tracking-wider transform rotate-[-1deg] shadow-sm">
-                ENCORE!
+            <div class="bg-amber-500 text-slate-950 px-2.5 py-1 rounded-lg fancy-font text-base md:text-xl tracking-wider transform rotate-[-1deg] shadow-sm">
+                ANCORA!
             </div>
             <button onclick="toggleDebug()" title="Toggle Debug Logs" class="bg-slate-800 hover:bg-slate-700 text-xs w-7 h-7 md:w-8 md:h-8 rounded-lg flex items-center justify-center transition-colors">🐛</button>
             <div class="text-slate-400 text-[9px] md:text-xs font-semibold uppercase tracking-widest hidden sm:block" id="game-mode-tag">Solo Mode</div>
@@ -244,7 +244,7 @@
 
         let gameMode = 'solo';
         let currentLobbyId = null, lobbyUnsubscribe = null;
-        const SAVE_KEY = 'encore_save_v10';
+        const SAVE_KEY = 'ancora_save_v11';
 
         // STUN Ice Servers for WebRTC PeerJS P2P NAT Traversal
         const PEER_CONFIG = {
