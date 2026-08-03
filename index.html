@@ -193,17 +193,30 @@
     <script type="module">
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'encore-boardgame';
         let db = null, auth = null, firebaseApp = null;
-        let localPlayerId = localStorage.getItem('encore_player_id') || Math.floor(1000 + Math.random() * 9000).toString();
+        let localPlayerId = localStorage.getItem('encore_player_id') || Math.floor(100000 + Math.random() * 900000).toString();
         localStorage.setItem('encore_player_id', localPlayerId);
 
         let gameMode = 'solo';
         let currentLobbyId = null, lobbyUnsubscribe = null;
-        const SAVE_KEY = 'encore_save_v6';
+        const SAVE_KEY = 'encore_save_v7';
 
-        // PeerJS WebRTC P2P Networking State
+        // STUN Ice Servers for WebRTC PeerJS P2P NAT Traversal
+        const PEER_CONFIG = {
+            config: {
+                iceServers: [
+                    { urls: 'stun:stun.l.google.com:19302' },
+                    { urls: 'stun:stun1.l.google.com:19302' },
+                    { urls: 'stun:stun2.l.google.com:19302' },
+                    { urls: 'stun:stun3.l.google.com:19302' },
+                    { urls: 'stun:stun4.l.google.com:19302' }
+                ]
+            }
+        };
+
+        // PeerJS State
         let p2pPeer = null;
-        let p2pConns = []; // Host: array of client connections
-        let p2pHostConn = null; // Client: connection to host
+        let p2pConns = [];
+        let p2pHostConn = null;
         let isP2PHost = false;
         let p2pLobbyState = null;
 
@@ -1032,42 +1045,42 @@
         window.createMultiplayerLobby = async () => {
             playSynth('click');
             let name = document.getElementById('player-name').value.trim() || 'Player 1';
-            let lobbyId = Math.floor(1000 + Math.random() * 9000).toString();
-            currentLobbyId = lobbyId;
+            let roomCode = Math.floor(1000 + Math.random() * 9000).toString();
+            currentLobbyId = roomCode;
 
             const boardModel = gameState.grid.map(row => row.map(cell => ({ color: cell.color, star: cell.star, r: cell.r, c: cell.c })));
 
             p2pLobbyState = {
-                lobbyId, currentTurn: 30, activeRollerId: localPlayerId,
+                lobbyId: roomCode, currentTurn: 30, activeRollerId: localPlayerId,
                 phase: "waiting_roll", rolledDice: null, lockedDice: null,
                 board: boardModel,
                 players: { [localPlayerId]: { id: localPlayerId, name, score: 0, wildcardsUsed: 0, crossedCells: [], completedCols: [], completedColors: [], hasTakenTurn: false, isHost: true } }
             };
 
             if (db) {
-                const ref = window.firebaseModules.doc(db, 'artifacts', appId, 'public', 'data', 'lobbies', lobbyId);
+                const ref = window.firebaseModules.doc(db, 'artifacts', appId, 'public', 'data', 'lobbies', roomCode);
                 await window.firebaseModules.setDoc(ref, p2pLobbyState);
-                gameMode = 'online'; subscribeToLobby(lobbyId); toggleModeSelector();
+                gameMode = 'online'; subscribeToLobby(roomCode); toggleModeSelector();
             } else {
-                // PeerJS Realtime Room Setup
+                // PeerJS Serverless Room Setup
                 isP2PHost = true;
                 p2pConns = [];
-                const peerId = `encore-room-${lobbyId}`;
+                const peerId = `encoreroom${roomCode}`;
                 
-                setStatus("Initializing room server...");
-                p2pPeer = new Peer(peerId);
+                setStatus("Connecting to room server...");
+                p2pPeer = new Peer(peerId, PEER_CONFIG);
                 
                 p2pPeer.on('open', (id) => {
-                    logDebug(`P2P Host Room created: ${id}`);
+                    logDebug(`Room created with ID: ${id}`);
                     gameMode = 'online';
                     toggleModeSelector();
                     document.getElementById('btn-reroll').classList.add('hidden');
                     syncLobby(p2pLobbyState);
-                    openModal("Room Created!", `Room Code: <b class="text-amber-400 text-2xl tracking-widest">${lobbyId}</b><br><span class="text-xs text-slate-400">Tell friends to enter code <b>${lobbyId}</b> to join!</span>`);
+                    openModal("Room Created!", `Room Code: <b class="text-amber-400 text-3xl tracking-widest">${roomCode}</b><br><span class="text-xs text-slate-400">Share code <b>${roomCode}</b> with friends to join!</span>`);
                 });
 
                 p2pPeer.on('connection', (conn) => {
-                    logDebug(`Client connected: ${conn.peer}`);
+                    logDebug(`Guest connected: ${conn.peer}`);
                     p2pConns.push(conn);
 
                     conn.on('data', (data) => {
@@ -1080,9 +1093,9 @@
                 });
 
                 p2pPeer.on('error', (err) => {
-                    logDebug(`P2P Error: ${err.type}`);
+                    logDebug(`PeerJS Host Error: ${err.type}`);
                     if (err.type === 'unavailable-id') {
-                        // Retry with new code
+                        // Retry with new 4-digit code
                         p2pPeer.destroy();
                         window.createMultiplayerLobby();
                     }
@@ -1108,14 +1121,14 @@
                 await window.firebaseModules.updateDoc(ref, { players: lobby.players });
                 gameMode = 'online'; subscribeToLobby(code); toggleModeSelector();
             } else {
-                // PeerJS Client Setup
+                // PeerJS Client Connection
                 isP2PHost = false;
                 setStatus("Connecting to room...");
-                p2pPeer = new Peer();
+                p2pPeer = new Peer(PEER_CONFIG);
 
                 p2pPeer.on('open', () => {
-                    const hostPeerId = `encore-room-${code}`;
-                    p2pHostConn = p2pPeer.connect(hostPeerId);
+                    const hostPeerId = `encoreroom${code}`;
+                    p2pHostConn = p2pPeer.connect(hostPeerId, { reliable: true });
 
                     p2pHostConn.on('open', () => {
                         logDebug(`Connected to host room ${code}`);
@@ -1132,14 +1145,14 @@
                     });
 
                     p2pHostConn.on('close', () => {
-                        openModal("Disconnected", "Host closed the room.");
+                        openModal("Disconnected", "Room session ended by host.");
                         initLocalSoloGame();
                     });
                 });
 
                 p2pPeer.on('error', (err) => {
-                    logDebug(`P2P Client error: ${err.message}`);
-                    openModal("Connection Failed", `Could not connect to Room Code <b>${code}</b>. Please verify the code.`);
+                    logDebug(`PeerJS Client error: ${err.message}`);
+                    openModal("Connection Failed", `Could not connect to Room Code <b>${code}</b>.<br><span class="text-xs text-slate-400">Please make sure the host has created the room first.</span>`);
                 });
             }
         }
