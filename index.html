@@ -54,9 +54,8 @@
 </head>
 <body class="text-slate-100 h-[100dvh] w-screen overflow-hidden flex flex-col select-none bg-slate-950 relative">
 
-    <!-- Debug Panel -->
-    <button onclick="toggleDebug()" class="fixed bottom-3 right-3 bg-slate-800 hover:bg-slate-700 text-lg w-10 h-10 rounded-full z-[100] shadow-lg flex items-center justify-center transition-colors">🐛</button>
-    <div id="debug-panel" class="fixed bottom-14 right-3 w-80 h-64 bg-slate-900 border border-slate-700 rounded-xl p-3 flex flex-col z-[100] shadow-2xl hidden opacity-95 backdrop-blur-sm">
+    <!-- Debug Log Panel -->
+    <div id="debug-panel" class="fixed top-12 left-3 w-80 h-64 bg-slate-900 border border-slate-700 rounded-xl p-3 flex flex-col z-[100] shadow-2xl hidden opacity-95 backdrop-blur-sm">
         <div class="flex justify-between items-center mb-2 border-b border-slate-700 pb-2">
             <span class="text-xs font-bold text-amber-400 uppercase tracking-wider">System Logs</span>
             <button onclick="clearDebug()" class="text-[10px] bg-slate-800 px-2 py-1 rounded text-slate-300 hover:text-white">Clear</button>
@@ -131,6 +130,7 @@
             <div class="bg-amber-500 text-slate-950 px-2 py-1 rounded-lg fancy-font text-base md:text-xl tracking-wider transform rotate-[-1deg] shadow-sm">
                 ENCORE!
             </div>
+            <button onclick="toggleDebug()" title="Toggle Debug Logs" class="bg-slate-800 hover:bg-slate-700 text-xs w-7 h-7 md:w-8 md:h-8 rounded-lg flex items-center justify-center transition-colors">🐛</button>
             <div class="text-slate-400 text-[9px] md:text-xs font-semibold uppercase tracking-widest hidden sm:block" id="game-mode-tag">Solo Mode</div>
         </div>
         <div class="flex items-center gap-1.5 md:gap-3 flex-wrap justify-end">
@@ -244,7 +244,7 @@
 
         let gameMode = 'solo';
         let currentLobbyId = null, lobbyUnsubscribe = null;
-        const SAVE_KEY = 'encore_save_v9';
+        const SAVE_KEY = 'encore_save_v10';
 
         // STUN Ice Servers for WebRTC PeerJS P2P NAT Traversal
         const PEER_CONFIG = {
