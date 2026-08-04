@@ -431,8 +431,14 @@
         document.addEventListener("visibilitychange", () => {
             if (document.visibilityState === 'hidden') saveGameState('visibility_hidden');
         });
-        window.addEventListener("pagehide", () => saveGameState('pagehide'));
-        window.addEventListener("beforeunload", () => saveGameState('beforeunload'));
+        window.addEventListener("pagehide", () => {
+            saveGameState('pagehide');
+            if (p2pPeer) { try { p2pPeer.destroy(); } catch(e){} p2pPeer = null; }
+        });
+        window.addEventListener("beforeunload", () => {
+            saveGameState('beforeunload');
+            if (p2pPeer) { try { p2pPeer.destroy(); } catch(e){} p2pPeer = null; }
+        });
 
         window.addEventListener('load', async () => {
             logDebug("Window loaded. Checking initialization...");
