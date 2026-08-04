@@ -54,10 +54,10 @@
 </head>
 <body class="text-slate-100 h-[100dvh] w-screen overflow-hidden flex flex-col select-none bg-slate-950 relative">
 
-    <!-- Reconnecting Safeguard Toast -->
+    <!-- Reconnecting / Host Migration Toast -->
     <div id="reconnect-toast" class="fixed top-3 left-1/2 -translate-x-1/2 bg-amber-500 text-slate-950 font-bold px-4 py-2 rounded-2xl shadow-2xl z-[90] hidden flex items-center gap-2 text-xs border border-amber-300 animate-pulse">
         <span class="animate-spin text-base">🔄</span>
-        <span id="reconnect-status-msg">Connection lost. Reconnecting (45s)...</span>
+        <span id="reconnect-status-msg">Connection lost. Reconnecting...</span>
     </div>
 
     <!-- Debug Log Panel -->
@@ -250,8 +250,8 @@
 
         let gameMode = 'solo';
         let currentLobbyId = null, lobbyUnsubscribe = null;
-        const SAVE_KEY = 'ancora_save_v12';
-        const SESSION_RECONNECT_KEY = 'ancora_room_session_v12';
+        const SAVE_KEY = 'ancora_save_v13';
+        const SESSION_RECONNECT_KEY = 'ancora_room_session_v13';
 
         // STUN Ice Servers for WebRTC PeerJS P2P NAT Traversal
         const PEER_CONFIG = {
@@ -273,7 +273,7 @@
         let isP2PHost = false;
         let p2pLobbyState = null;
 
-        // Reconnection Safeguard State
+        // Reconnection & Host Failover Migration State
         let isReconnecting = false;
         let reconnectTimer = null;
         let reconnectSecondsLeft = 60;
@@ -1253,7 +1253,7 @@
             renderBoard();
         }
 
-        // --- Firebase & PeerJS WebRTC Room Engine with Reconnection Safeguard ---
+        // --- Firebase & PeerJS WebRTC Room Engine with Host Reconnection & Automatic Host Migration ---
         async function initFirebaseAndAuth() {
             try {
                 if (typeof __firebase_config !== 'undefined' && __firebase_config) {
@@ -1280,6 +1280,7 @@
 
                 p2pLobbyState = {
                     lobbyId: roomCode, currentTurn: 30, activeRollerId: localPlayerId, hostId: localPlayerId,
+                    playerOrder: [localPlayerId],
                     phase: "waiting_roll", rolledDice: null, lockedDice: null,
                     isGameStarted: false,
                     globallyCompletedCols1st: [], globallyCompletedColors1st: [],
@@ -1295,7 +1296,7 @@
                 await window.firebaseModules.setDoc(ref, p2pLobbyState);
                 gameMode = 'online'; subscribeToLobby(roomCode); toggleModeSelector();
             } else {
-                // PeerJS Serverless Room Setup with Host Reconnection Handler
+                // PeerJS Serverless Room Setup with Host Migration & Reconnection Handler
                 isP2PHost = true;
                 p2pConns = [];
                 const peerId = `encoreroom${roomCode}`;
@@ -1305,7 +1306,7 @@
                 p2pPeer = new Peer(peerId, PEER_CONFIG);
                 
                 p2pPeer.on('open', (id) => {
-                    logDebug(`Host online with room ID: ${id}`);
+                    logDebug(`Host active with room ID: ${id}`);
                     gameMode = 'online';
                     hideReconnectToast();
                     if (!isRejoining) toggleModeSelector();
@@ -1358,7 +1359,7 @@
                 await window.firebaseModules.updateDoc(ref, { players: lobby.players });
                 gameMode = 'online'; subscribeToLobby(code); toggleModeSelector();
             } else {
-                // PeerJS Client Connection with Auto-Retry Reconnect Loop
+                // PeerJS Client Connection with Host Failover Migration Loop
                 isP2PHost = false;
                 setStatus("Connecting to room...");
                 if (p2pPeer) { try { p2pPeer.destroy(); } catch(e){} }
@@ -1370,7 +1371,7 @@
 
                 p2pPeer.on('error', (err) => {
                     logDebug(`PeerJS Client error: ${err.message}`);
-                    startGuestReconnectLoop(code, name);
+                    startGuestReconnectAndFailoverLoop(code, name);
                 });
             }
         }
@@ -1380,7 +1381,7 @@
             p2pHostConn = p2pPeer.connect(hostPeerId, { reliable: true });
 
             p2pHostConn.on('open', () => {
-                logDebug(`Connected to host room ${code}`);
+                logDebug(`Connected to room host ${code}`);
                 hideReconnectToast();
                 if (reconnectTimer) { clearInterval(reconnectTimer); reconnectTimer = null; }
                 isReconnecting = false;
@@ -1401,12 +1402,12 @@
             });
 
             p2pHostConn.on('close', () => {
-                logDebug("Host connection closed. Initiating 60s reconnection safeguard window...");
-                startGuestReconnectLoop(code, name);
+                logDebug("Host connection lost. Starting 60s Reconnect & Host Failover Loop...");
+                startGuestReconnectAndFailoverLoop(code, name);
             });
         }
 
-        function startGuestReconnectLoop(code, name) {
+        function startGuestReconnectAndFailoverLoop(code, name) {
             if (isReconnecting) return;
             isReconnecting = true;
             reconnectSecondsLeft = 60;
@@ -1416,6 +1417,30 @@
             if (reconnectTimer) clearInterval(reconnectTimer);
             reconnectTimer = setInterval(() => {
                 reconnectSecondsLeft -= 2;
+
+                // Host Migration Failover Check: After 15s of host unreachability, next guest promotes to new Host!
+                if (p2pLobbyState && p2pLobbyState.playerOrder) {
+                    const activePIds = p2pLobbyState.playerOrder.filter(pid => pid !== p2pLobbyState.hostId);
+                    const nextHostId = activePIds[0];
+
+                    if (nextHostId === localPlayerId && reconnectSecondsLeft <= 45) {
+                        logDebug(`[Host Migration] Promoting self (${localPlayerId}) to New Room Host for ${code}...`);
+                        clearInterval(reconnectTimer);
+                        reconnectTimer = null;
+                        isReconnecting = false;
+                        hideReconnectToast();
+
+                        // Promote to Host
+                        p2pLobbyState.hostId = localPlayerId;
+                        p2pLobbyState.players[localPlayerId].isHost = true;
+                        p2pLobbyState.playerOrder = [localPlayerId, ...activePIds.filter(id=>id!==localPlayerId)];
+                        
+                        window.createMultiplayerLobby(code, true);
+                        openModal("Host Migrated!", `The original host disconnected. <b>You are now the Room Host!</b>`);
+                        return;
+                    }
+                }
+
                 if (reconnectSecondsLeft <= 0) {
                     clearInterval(reconnectTimer);
                     reconnectTimer = null;
@@ -1426,6 +1451,7 @@
                     initLocalSoloGame();
                     return;
                 }
+
                 showReconnectToast(`Host disconnected. Reconnecting (${reconnectSecondsLeft}s)...`);
                 if (p2pPeer && !p2pPeer.destroyed) {
                     attemptGuestConnectToHost(code, name);
@@ -1466,6 +1492,7 @@
                 } else {
                     p2pLobbyState.players[data.id].name = data.name;
                 }
+                if (!p2pLobbyState.playerOrder.includes(data.id)) p2pLobbyState.playerOrder.push(data.id);
                 broadcastP2PState();
             } else if (data.type === 'COMMIT_TURN') {
                 const pid = data.id;
@@ -1534,6 +1561,8 @@
             gameState.isGameStarted = !!lobby.isGameStarted;
             gameState.globallyCompletedCols1st = lobby.globallyCompletedCols1st || [];
             gameState.globallyCompletedColors1st = lobby.globallyCompletedColors1st || [];
+
+            p2pLobbyState = lobby;
 
             // Render Lobby Waiting Screen vs Game Board
             const lobbyScreen = document.getElementById('online-lobby-screen');
