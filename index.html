@@ -54,6 +54,12 @@
 </head>
 <body class="text-slate-100 h-[100dvh] w-screen overflow-hidden flex flex-col select-none bg-slate-950 relative">
 
+    <!-- Reconnecting Safeguard Toast -->
+    <div id="reconnect-toast" class="fixed top-3 left-1/2 -translate-x-1/2 bg-amber-500 text-slate-950 font-bold px-4 py-2 rounded-2xl shadow-2xl z-[90] hidden flex items-center gap-2 text-xs border border-amber-300 animate-pulse">
+        <span class="animate-spin text-base">🔄</span>
+        <span id="reconnect-status-msg">Connection lost. Reconnecting (45s)...</span>
+    </div>
+
     <!-- Debug Log Panel -->
     <div id="debug-panel" class="fixed top-12 left-3 w-80 h-64 bg-slate-900 border border-slate-700 rounded-xl p-3 flex flex-col z-[100] shadow-2xl hidden opacity-95 backdrop-blur-sm">
         <div class="flex justify-between items-center mb-2 border-b border-slate-700 pb-2">
@@ -244,7 +250,8 @@
 
         let gameMode = 'solo';
         let currentLobbyId = null, lobbyUnsubscribe = null;
-        const SAVE_KEY = 'ancora_save_v11';
+        const SAVE_KEY = 'ancora_save_v12';
+        const SESSION_RECONNECT_KEY = 'ancora_room_session_v12';
 
         // STUN Ice Servers for WebRTC PeerJS P2P NAT Traversal
         const PEER_CONFIG = {
@@ -265,6 +272,11 @@
         let p2pHostConn = null;
         let isP2PHost = false;
         let p2pLobbyState = null;
+
+        // Reconnection Safeguard State
+        let isReconnecting = false;
+        let reconnectTimer = null;
+        let reconnectSecondsLeft = 60;
 
         // --- Global UI Helpers ---
         window.openModal = (title, bodyHtml) => {
@@ -287,6 +299,16 @@
             document.getElementById('status-text').innerHTML = html;
         }
 
+        function showReconnectToast(msg) {
+            const toast = document.getElementById('reconnect-toast');
+            document.getElementById('reconnect-status-msg').innerText = msg;
+            toast.classList.remove('hidden');
+        }
+
+        function hideReconnectToast() {
+            document.getElementById('reconnect-toast').classList.add('hidden');
+        }
+
         window.copyLobbyCode = () => {
             if (currentLobbyId) {
                 navigator.clipboard.writeText(currentLobbyId);
@@ -297,7 +319,10 @@
 
         window.leaveLobby = () => {
             playSynth('click');
+            sessionStorage.removeItem(SESSION_RECONNECT_KEY);
             if (p2pPeer) { p2pPeer.destroy(); p2pPeer = null; }
+            if (reconnectTimer) { clearInterval(reconnectTimer); reconnectTimer = null; }
+            hideReconnectToast();
             const lobbyScreen = document.getElementById('online-lobby-screen');
             lobbyScreen.classList.add('hidden');
             initLocalSoloGame();
@@ -376,6 +401,44 @@
             localPlayers: [], currentPlayerViewIndex: 0, localPlayersDone: 0
         };
 
+        // --- Session Storage & Reconnect Logic ---
+        function saveRoomSession(isHost, code, state) {
+            try {
+                const sess = { timestamp: Date.now(), isHost, code, state, localPlayerId };
+                sessionStorage.setItem(SESSION_RECONNECT_KEY, JSON.stringify(sess));
+            } catch(e){}
+        }
+
+        async function checkAndResumeSession() {
+            try {
+                const raw = sessionStorage.getItem(SESSION_RECONNECT_KEY);
+                if (!raw) return false;
+                const sess = JSON.parse(raw);
+                const elapsed = (Date.now() - sess.timestamp) / 1000;
+                if (elapsed > 60) {
+                    sessionStorage.removeItem(SESSION_RECONNECT_KEY);
+                    return false;
+                }
+
+                logDebug(`Resuming online room session ${sess.code} (elapsed: ${Math.round(elapsed)}s)...`);
+                showReconnectToast(`Rejoining Room ${sess.code}...`);
+
+                if (sess.isHost) {
+                    currentLobbyId = sess.code;
+                    p2pLobbyState = sess.state;
+                    window.createMultiplayerLobby(sess.code, true);
+                    return true;
+                } else {
+                    currentLobbyId = sess.code;
+                    window.joinMultiplayerLobby(sess.code);
+                    return true;
+                }
+            } catch(e) {
+                logDebug(`Session resume note: ${e.message}`);
+            }
+            return false;
+        }
+
         // --- Deep Local Storage Logic ---
         function saveGameState(trigger = "manual") {
             if (gameMode === 'online') return; 
@@ -433,19 +496,22 @@
         });
         window.addEventListener("pagehide", () => {
             saveGameState('pagehide');
-            if (p2pPeer) { try { p2pPeer.destroy(); } catch(e){} p2pPeer = null; }
+            if (p2pPeer && !isReconnecting) { try { p2pPeer.destroy(); } catch(e){} p2pPeer = null; }
         });
         window.addEventListener("beforeunload", () => {
             saveGameState('beforeunload');
-            if (p2pPeer) { try { p2pPeer.destroy(); } catch(e){} p2pPeer = null; }
+            if (p2pPeer && !isReconnecting) { try { p2pPeer.destroy(); } catch(e){} p2pPeer = null; }
         });
 
         window.addEventListener('load', async () => {
             logDebug("Window loaded. Checking initialization...");
             await initFirebaseAndAuth();
-            if (!loadGameState() || !gameState.grid || !gameState.grid.length) {
-                logDebug("Proceeding to fresh board generation.");
-                window.regenerateBoard();
+            const resumed = await checkAndResumeSession();
+            if (!resumed) {
+                if (!loadGameState() || !gameState.grid || !gameState.grid.length) {
+                    logDebug("Proceeding to fresh board generation.");
+                    window.regenerateBoard();
+                }
             }
         });
 
@@ -839,6 +905,8 @@
             gameState.currentScore = 0;
             gameState.isGameStarted = false;
             document.getElementById('online-lobby-screen').classList.add('hidden');
+            sessionStorage.removeItem(SESSION_RECONNECT_KEY);
+            hideReconnectToast();
             gameState.grid.forEach(r=>r.forEach(c=>{ c.crossed=false; c.tempCrossed=false; }));
             updateScoresAndUI(); setStatus("Ready! Roll the dice to begin.");
             saveGameState('init_solo');
@@ -1185,7 +1253,7 @@
             renderBoard();
         }
 
-        // --- Firebase & PeerJS WebRTC Room Engine ---
+        // --- Firebase & PeerJS WebRTC Room Engine with Reconnection Safeguard ---
         async function initFirebaseAndAuth() {
             try {
                 if (typeof __firebase_config !== 'undefined' && __firebase_config) {
@@ -1201,40 +1269,46 @@
             }
         }
 
-        window.createMultiplayerLobby = async () => {
+        window.createMultiplayerLobby = async (customCode = null, isRejoining = false) => {
             playSynth('click');
             let name = document.getElementById('player-name').value.trim() || 'Player 1';
-            let roomCode = Math.floor(1000 + Math.random() * 9000).toString();
+            let roomCode = customCode || Math.floor(1000 + Math.random() * 9000).toString();
             currentLobbyId = roomCode;
 
-            const boardModel = gameState.grid.map(row => row.map(cell => ({ color: cell.color, star: cell.star, r: cell.r, c: cell.c })));
+            if (!isRejoining || !p2pLobbyState) {
+                const boardModel = gameState.grid.map(row => row.map(cell => ({ color: cell.color, star: cell.star, r: cell.r, c: cell.c })));
 
-            p2pLobbyState = {
-                lobbyId: roomCode, currentTurn: 30, activeRollerId: localPlayerId, hostId: localPlayerId,
-                phase: "waiting_roll", rolledDice: null, lockedDice: null,
-                isGameStarted: false,
-                globallyCompletedCols1st: [], globallyCompletedColors1st: [],
-                board: boardModel,
-                players: { [localPlayerId]: { id: localPlayerId, name, score: 0, wildcardsUsed: 0, crossedCells: [], completedCols1st: [], completedCols2nd: [], completedColors1st: [], completedColors2nd: [], hasTakenTurn: false, isHost: true } }
-            };
+                p2pLobbyState = {
+                    lobbyId: roomCode, currentTurn: 30, activeRollerId: localPlayerId, hostId: localPlayerId,
+                    phase: "waiting_roll", rolledDice: null, lockedDice: null,
+                    isGameStarted: false,
+                    globallyCompletedCols1st: [], globallyCompletedColors1st: [],
+                    board: boardModel,
+                    players: { [localPlayerId]: { id: localPlayerId, name, score: 0, wildcardsUsed: 0, crossedCells: [], completedCols1st: [], completedCols2nd: [], completedColors1st: [], completedColors2nd: [], hasTakenTurn: false, isHost: true } }
+                };
+            }
+
+            saveRoomSession(true, roomCode, p2pLobbyState);
 
             if (db) {
                 const ref = window.firebaseModules.doc(db, 'artifacts', appId, 'public', 'data', 'lobbies', roomCode);
                 await window.firebaseModules.setDoc(ref, p2pLobbyState);
                 gameMode = 'online'; subscribeToLobby(roomCode); toggleModeSelector();
             } else {
-                // PeerJS Serverless Room Setup
+                // PeerJS Serverless Room Setup with Host Reconnection Handler
                 isP2PHost = true;
                 p2pConns = [];
                 const peerId = `encoreroom${roomCode}`;
                 
                 setStatus("Connecting to room server...");
+                if (p2pPeer) { try { p2pPeer.destroy(); } catch(e){} }
                 p2pPeer = new Peer(peerId, PEER_CONFIG);
                 
                 p2pPeer.on('open', (id) => {
-                    logDebug(`Room created with ID: ${id}`);
+                    logDebug(`Host online with room ID: ${id}`);
                     gameMode = 'online';
-                    toggleModeSelector();
+                    hideReconnectToast();
+                    if (!isRejoining) toggleModeSelector();
                     document.getElementById('btn-reroll').classList.add('hidden');
                     syncLobby(p2pLobbyState);
                 });
@@ -1254,21 +1328,25 @@
 
                 p2pPeer.on('error', (err) => {
                     logDebug(`PeerJS Host Error: ${err.type}`);
-                    if (err.type === 'unavailable-id') {
+                    if (err.type === 'unavailable-id' && !isRejoining) {
                         p2pPeer.destroy();
                         window.createMultiplayerLobby();
+                    } else if (isRejoining) {
+                        showReconnectToast("Reconnecting host socket...");
+                        setTimeout(() => window.createMultiplayerLobby(roomCode, true), 3000);
                     }
                 });
             }
         }
 
-        window.joinMultiplayerLobby = async () => {
+        window.joinMultiplayerLobby = async (customCode = null) => {
             playSynth('click');
             let name = document.getElementById('player-name').value.trim() || 'Guest';
-            let code = document.getElementById('lobby-code').value.trim().toUpperCase();
+            let code = (customCode || document.getElementById('lobby-code').value.trim()).toUpperCase();
             if (!code) { openModal("Error", "Please enter a 4-digit room code."); return; }
 
             currentLobbyId = code;
+            saveRoomSession(false, code, null);
 
             if (db) {
                 const ref = window.firebaseModules.doc(db, 'artifacts', appId, 'public', 'data', 'lobbies', code);
@@ -1280,40 +1358,82 @@
                 await window.firebaseModules.updateDoc(ref, { players: lobby.players });
                 gameMode = 'online'; subscribeToLobby(code); toggleModeSelector();
             } else {
-                // PeerJS Client Connection
+                // PeerJS Client Connection with Auto-Retry Reconnect Loop
                 isP2PHost = false;
                 setStatus("Connecting to room...");
+                if (p2pPeer) { try { p2pPeer.destroy(); } catch(e){} }
                 p2pPeer = new Peer(PEER_CONFIG);
 
                 p2pPeer.on('open', () => {
-                    const hostPeerId = `encoreroom${code}`;
-                    p2pHostConn = p2pPeer.connect(hostPeerId, { reliable: true });
-
-                    p2pHostConn.on('open', () => {
-                        logDebug(`Connected to host room ${code}`);
-                        p2pHostConn.send({ type: 'JOIN', id: localPlayerId, name });
-                        gameMode = 'online';
-                        toggleModeSelector();
-                        document.getElementById('btn-reroll').classList.add('hidden');
-                    });
-
-                    p2pHostConn.on('data', (data) => {
-                        if (data.type === 'SYNC_STATE') {
-                            syncLobby(data.state);
-                        }
-                    });
-
-                    p2pHostConn.on('close', () => {
-                        openModal("Disconnected", "Room session ended by host.");
-                        initLocalSoloGame();
-                    });
+                    attemptGuestConnectToHost(code, name);
                 });
 
                 p2pPeer.on('error', (err) => {
                     logDebug(`PeerJS Client error: ${err.message}`);
-                    openModal("Connection Failed", `Could not connect to Room Code <b>${code}</b>.<br><span class="text-xs text-slate-400">Please make sure the host has created the room first.</span>`);
+                    startGuestReconnectLoop(code, name);
                 });
             }
+        }
+
+        function attemptGuestConnectToHost(code, name) {
+            const hostPeerId = `encoreroom${code}`;
+            p2pHostConn = p2pPeer.connect(hostPeerId, { reliable: true });
+
+            p2pHostConn.on('open', () => {
+                logDebug(`Connected to host room ${code}`);
+                hideReconnectToast();
+                if (reconnectTimer) { clearInterval(reconnectTimer); reconnectTimer = null; }
+                isReconnecting = false;
+
+                let crossed = []; gameState.grid.forEach(r => r.forEach(c => { if(c.crossed) crossed.push(`${c.r},${c.c}`); }));
+                p2pHostConn.send({
+                    type: 'JOIN', id: localPlayerId, name,
+                    score: gameState.currentScore, crossedCells: crossed
+                });
+                gameMode = 'online';
+                document.getElementById('btn-reroll').classList.add('hidden');
+            });
+
+            p2pHostConn.on('data', (data) => {
+                if (data.type === 'SYNC_STATE') {
+                    syncLobby(data.state);
+                }
+            });
+
+            p2pHostConn.on('close', () => {
+                logDebug("Host connection closed. Initiating 60s reconnection safeguard window...");
+                startGuestReconnectLoop(code, name);
+            });
+        }
+
+        function startGuestReconnectLoop(code, name) {
+            if (isReconnecting) return;
+            isReconnecting = true;
+            reconnectSecondsLeft = 60;
+
+            showReconnectToast(`Host disconnected. Reconnecting (${reconnectSecondsLeft}s)...`);
+
+            if (reconnectTimer) clearInterval(reconnectTimer);
+            reconnectTimer = setInterval(() => {
+                reconnectSecondsLeft -= 2;
+                if (reconnectSecondsLeft <= 0) {
+                    clearInterval(reconnectTimer);
+                    reconnectTimer = null;
+                    isReconnecting = false;
+                    hideReconnectToast();
+                    sessionStorage.removeItem(SESSION_RECONNECT_KEY);
+                    openModal("Connection Lost", `The host could not be reached after 60 seconds.<br><span class="text-xs text-slate-400">Match session ended.</span>`);
+                    initLocalSoloGame();
+                    return;
+                }
+                showReconnectToast(`Host disconnected. Reconnecting (${reconnectSecondsLeft}s)...`);
+                if (p2pPeer && !p2pPeer.destroyed) {
+                    attemptGuestConnectToHost(code, name);
+                } else {
+                    p2pPeer = new Peer(PEER_CONFIG);
+                    p2pPeer.on('open', () => attemptGuestConnectToHost(code, name));
+                }
+            }, 2500);
         }
 
         window.startOnlineMatch = async () => {
@@ -1329,6 +1449,7 @@
 
         function broadcastP2PState() {
             if (!isP2PHost || !p2pLobbyState) return;
+            saveRoomSession(true, currentLobbyId, p2pLobbyState);
             syncLobby(p2pLobbyState);
             p2pConns.forEach(conn => {
                 if (conn.open) conn.send({ type: 'SYNC_STATE', state: p2pLobbyState });
@@ -1338,9 +1459,13 @@
         function handleP2PHostMessage(conn, data) {
             if (!p2pLobbyState) return;
             if (data.type === 'JOIN') {
-                p2pLobbyState.players[data.id] = {
-                    id: data.id, name: data.name, score: 0, wildcardsUsed: 0, crossedCells: [], completedCols1st: [], completedCols2nd: [], completedColors1st: [], completedColors2nd: [], hasTakenTurn: false, isHost: false
-                };
+                if (!p2pLobbyState.players[data.id]) {
+                    p2pLobbyState.players[data.id] = {
+                        id: data.id, name: data.name, score: data.score || 0, wildcardsUsed: 0, crossedCells: data.crossedCells || [], completedCols1st: [], completedCols2nd: [], completedColors1st: [], completedColors2nd: [], hasTakenTurn: false, isHost: false
+                    };
+                } else {
+                    p2pLobbyState.players[data.id].name = data.name;
+                }
                 broadcastP2PState();
             } else if (data.type === 'COMMIT_TURN') {
                 const pid = data.id;

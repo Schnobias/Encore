@@ -1,4 +1,4 @@
-const CACHE_NAME = 'encore-v9';
+const CACHE_NAME = 'encore-v10';
 const ASSETS_TO_CACHE = [
   './manifest.json',
   './icon.svg'
