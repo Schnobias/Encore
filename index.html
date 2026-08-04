@@ -250,8 +250,8 @@
 
         let gameMode = 'solo';
         let currentLobbyId = null, lobbyUnsubscribe = null;
-        const SAVE_KEY = 'ancora_save_v14';
-        const SESSION_RECONNECT_KEY = 'ancora_room_session_v14';
+        const SAVE_KEY = 'ancora_save_v15';
+        const SESSION_RECONNECT_KEY = 'ancora_room_session_v15';
 
         // STUN Ice Servers for WebRTC PeerJS P2P NAT Traversal
         const PEER_CONFIG = {
@@ -525,7 +525,7 @@
             } else {
                 document.getElementById('tab-online').classList.replace('text-slate-500', 'text-amber-400');
                 document.getElementById('tab-local').classList.replace('text-amber-400', 'text-slate-500');
-                document.getElementById('setup-online').classList.replace('flex', 'hidden');
+                document.getElementById('setup-online').classList.replace('hidden', 'flex');
                 document.getElementById('setup-local').classList.replace('flex', 'hidden');
             }
         }
@@ -1253,7 +1253,7 @@
             renderBoard();
         }
 
-        // --- Firebase & PeerJS WebRTC Room Engine with Original Host Rejoin State Recovery ---
+        // --- Firebase & PeerJS WebRTC Room Engine with Real-Time Player Connection Badges ---
         async function initFirebaseAndAuth() {
             try {
                 if (typeof __firebase_config !== 'undefined' && __firebase_config) {
@@ -1285,7 +1285,7 @@
                     isGameStarted: false,
                     globallyCompletedCols1st: [], globallyCompletedColors1st: [],
                     board: boardModel,
-                    players: { [localPlayerId]: { id: localPlayerId, name, score: 0, wildcardsUsed: 0, crossedCells: [], completedCols1st: [], completedCols2nd: [], completedColors1st: [], completedColors2nd: [], hasTakenTurn: false, isHost: true } }
+                    players: { [localPlayerId]: { id: localPlayerId, name, score: 0, wildcardsUsed: 0, crossedCells: [], completedCols1st: [], completedCols2nd: [], completedColors1st: [], completedColors2nd: [], hasTakenTurn: false, isHost: true, isOnline: true } }
                 };
             }
 
@@ -1324,6 +1324,11 @@
 
                     conn.on('close', () => {
                         p2pConns = p2pConns.filter(c => c !== conn);
+                        if (conn.guestPlayerId && p2pLobbyState && p2pLobbyState.players[conn.guestPlayerId]) {
+                            logDebug(`Guest ${conn.guestPlayerId} socket closed. Marking offline.`);
+                            p2pLobbyState.players[conn.guestPlayerId].isOnline = false;
+                            broadcastP2PState();
+                        }
                     });
                 });
 
@@ -1331,7 +1336,6 @@
                     logDebug(`PeerJS Host Error: ${err.type}`);
                     if (err.type === 'unavailable-id') {
                         if (isRejoining) {
-                            // Host Fallback: The host socket is held by a migrated guest! Rejoin as Guest player using saved ID & state!
                             logDebug(`[Host Fallback] Room ${roomCode} is held by migrated host. Rejoining room as player...`);
                             if (p2pPeer) { try { p2pPeer.destroy(); } catch(e){} p2pPeer = null; }
                             isP2PHost = false;
@@ -1364,7 +1368,9 @@
 
                 let lobby = snap.data();
                 if (!lobby.players[localPlayerId]) {
-                    lobby.players[localPlayerId] = { id: localPlayerId, name, score: 0, wildcardsUsed: 0, crossedCells: [], completedCols1st: [], completedCols2nd: [], completedColors1st: [], completedColors2nd: [], hasTakenTurn: false, isHost: false };
+                    lobby.players[localPlayerId] = { id: localPlayerId, name, score: 0, wildcardsUsed: 0, crossedCells: [], completedCols1st: [], completedCols2nd: [], completedColors1st: [], completedColors2nd: [], hasTakenTurn: false, isHost: false, isOnline: true };
+                } else {
+                    lobby.players[localPlayerId].isOnline = true;
                 }
                 await window.firebaseModules.updateDoc(ref, { players: lobby.players });
                 gameMode = 'online'; subscribeToLobby(code); toggleModeSelector();
@@ -1448,6 +1454,7 @@
                         // Promote to Host
                         p2pLobbyState.hostId = localPlayerId;
                         p2pLobbyState.players[localPlayerId].isHost = true;
+                        p2pLobbyState.players[localPlayerId].isOnline = true;
                         p2pLobbyState.playerOrder = [localPlayerId, ...activePIds.filter(id=>id!==localPlayerId)];
                         
                         window.createMultiplayerLobby(code, true);
@@ -1500,14 +1507,16 @@
         function handleP2PHostMessage(conn, data) {
             if (!p2pLobbyState) return;
             if (data.type === 'JOIN') {
+                if (conn) conn.guestPlayerId = data.id;
+
                 if (!p2pLobbyState.players[data.id]) {
                     p2pLobbyState.players[data.id] = {
-                        id: data.id, name: data.name, score: data.score || 0, wildcardsUsed: data.wildcardsUsed || 0, crossedCells: data.crossedCells || [], completedCols1st: data.completedCols1st || [], completedCols2nd: data.completedCols2nd || [], completedColors1st: data.completedColors1st || [], completedColors2nd: data.completedColors2nd || [], hasTakenTurn: false, isHost: false
+                        id: data.id, name: data.name, score: data.score || 0, wildcardsUsed: data.wildcardsUsed || 0, crossedCells: data.crossedCells || [], completedCols1st: data.completedCols1st || [], completedCols2nd: data.completedCols2nd || [], completedColors1st: data.completedColors1st || [], completedColors2nd: data.completedColors2nd || [], hasTakenTurn: false, isHost: false, isOnline: true
                     };
                 } else {
-                    // Restore/update returning player state cleanly
                     let existing = p2pLobbyState.players[data.id];
                     existing.name = data.name;
+                    existing.isOnline = true;
                     if (data.score) existing.score = data.score;
                     if (data.crossedCells && data.crossedCells.length > existing.crossedCells.length) existing.crossedCells = data.crossedCells;
                     if (data.wildcardsUsed) existing.wildcardsUsed = data.wildcardsUsed;
@@ -1517,6 +1526,8 @@
             } else if (data.type === 'COMMIT_TURN') {
                 const pid = data.id;
                 if (!p2pLobbyState.players[pid]) return;
+
+                p2pLobbyState.players[pid].isOnline = true;
 
                 if (p2pLobbyState.phase === "active_choosing" && pid === p2pLobbyState.activeRollerId) {
                     p2pLobbyState.lockedDice = data.passed ? null : data.lockedDice;
@@ -1597,8 +1608,8 @@
                 plist.innerHTML = playersArr.map(p => `
                     <div class="flex justify-between items-center bg-slate-900 border border-slate-800 p-2.5 rounded-xl">
                         <div class="flex items-center gap-2">
-                            <span class="w-2.5 h-2.5 rounded-full bg-emerald-400"></span>
-                            <span class="font-bold text-xs ${p.id === localPlayerId ? 'text-amber-300' : 'text-slate-200'}">${p.name} ${p.id === localPlayerId ? '(You)' : ''}</span>
+                            <span class="w-2.5 h-2.5 rounded-full ${p.isOnline !== false ? 'bg-emerald-400' : 'bg-rose-500'}"></span>
+                            <span class="font-bold text-xs ${p.id === localPlayerId ? 'text-amber-300' : 'text-slate-200'}">${p.name} ${p.id === localPlayerId ? '(You)' : ''} ${p.isOnline === false ? '<span class="text-[9px] text-rose-400 font-normal">(Reconnecting...)</span>' : ''}</span>
                         </div>
                         ${p.isHost || p.id === lobby.hostId ? '<span class="text-[9px] uppercase font-extrabold bg-amber-400 text-slate-950 px-2 py-0.5 rounded-md">👑 Host</span>' : '<span class="text-[9px] uppercase text-slate-500 font-bold">Ready</span>'}
                     </div>
@@ -1656,10 +1667,11 @@
             const list = document.getElementById('roster-list'); list.innerHTML = '';
             Object.values(lobby.players).forEach(p => {
                 const isAct = p.id === lobby.activeRollerId;
+                const isOnline = p.isOnline !== false;
                 list.innerHTML += `<div class="flex items-center gap-1.5 bg-slate-950/60 px-2 py-1 rounded-lg border text-[10px] font-bold ${isAct ? 'border-amber-400 text-amber-300' : 'border-slate-800 text-slate-300'}">
-                    <span class="w-1.5 h-1.5 rounded-full ${p.hasTakenTurn ? 'bg-emerald-500' : 'bg-rose-500'}"></span>
+                    <span class="w-1.5 h-1.5 rounded-full ${!isOnline ? 'bg-rose-500 animate-pulse' : (p.hasTakenTurn ? 'bg-emerald-500' : 'bg-amber-400')}"></span>
                     <span>${p.name} (${p.score})</span>
-                    ${isAct ? '<span class="text-[8px] uppercase bg-amber-400 text-slate-950 px-1 rounded">Rolls</span>' : ''}</div>`;
+                    ${!isOnline ? '<span class="text-[8px] uppercase bg-rose-500/20 text-rose-300 px-1 rounded border border-rose-500/40">Offline</span>' : (isAct ? '<span class="text-[8px] uppercase bg-amber-400 text-slate-950 px-1 rounded">Rolls</span>' : '')}</div>`;
             });
 
             const me = lobby.players[localPlayerId];
