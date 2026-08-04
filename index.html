@@ -250,8 +250,8 @@
 
         let gameMode = 'solo';
         let currentLobbyId = null, lobbyUnsubscribe = null;
-        const SAVE_KEY = 'ancora_save_v13';
-        const SESSION_RECONNECT_KEY = 'ancora_room_session_v13';
+        const SAVE_KEY = 'ancora_save_v14';
+        const SESSION_RECONNECT_KEY = 'ancora_room_session_v14';
 
         // STUN Ice Servers for WebRTC PeerJS P2P NAT Traversal
         const PEER_CONFIG = {
@@ -525,7 +525,7 @@
             } else {
                 document.getElementById('tab-online').classList.replace('text-slate-500', 'text-amber-400');
                 document.getElementById('tab-local').classList.replace('text-amber-400', 'text-slate-500');
-                document.getElementById('setup-online').classList.replace('hidden', 'flex');
+                document.getElementById('setup-online').classList.replace('flex', 'hidden');
                 document.getElementById('setup-local').classList.replace('flex', 'hidden');
             }
         }
@@ -1253,7 +1253,7 @@
             renderBoard();
         }
 
-        // --- Firebase & PeerJS WebRTC Room Engine with Host Reconnection & Automatic Host Migration ---
+        // --- Firebase & PeerJS WebRTC Room Engine with Original Host Rejoin State Recovery ---
         async function initFirebaseAndAuth() {
             try {
                 if (typeof __firebase_config !== 'undefined' && __firebase_config) {
@@ -1296,7 +1296,7 @@
                 await window.firebaseModules.setDoc(ref, p2pLobbyState);
                 gameMode = 'online'; subscribeToLobby(roomCode); toggleModeSelector();
             } else {
-                // PeerJS Serverless Room Setup with Host Migration & Reconnection Handler
+                // PeerJS Serverless Room Setup with Host Rejoin Fallback
                 isP2PHost = true;
                 p2pConns = [];
                 const peerId = `ancoraroom${roomCode}`;
@@ -1329,9 +1329,17 @@
 
                 p2pPeer.on('error', (err) => {
                     logDebug(`PeerJS Host Error: ${err.type}`);
-                    if (err.type === 'unavailable-id' && !isRejoining) {
-                        p2pPeer.destroy();
-                        window.createMultiplayerLobby();
+                    if (err.type === 'unavailable-id') {
+                        if (isRejoining) {
+                            // Host Fallback: The host socket is held by a migrated guest! Rejoin as Guest player using saved ID & state!
+                            logDebug(`[Host Fallback] Room ${roomCode} is held by migrated host. Rejoining room as player...`);
+                            if (p2pPeer) { try { p2pPeer.destroy(); } catch(e){} p2pPeer = null; }
+                            isP2PHost = false;
+                            window.joinMultiplayerLobby(roomCode);
+                        } else {
+                            p2pPeer.destroy();
+                            window.createMultiplayerLobby();
+                        }
                     } else if (isRejoining) {
                         showReconnectToast("Reconnecting host socket...");
                         setTimeout(() => window.createMultiplayerLobby(roomCode, true), 3000);
@@ -1342,7 +1350,7 @@
 
         window.joinMultiplayerLobby = async (customCode = null) => {
             playSynth('click');
-            let name = document.getElementById('player-name').value.trim() || 'Guest';
+            let name = document.getElementById('player-name').value.trim() || 'Player';
             let code = (customCode || document.getElementById('lobby-code').value.trim()).toUpperCase();
             if (!code) { openModal("Error", "Please enter a 4-digit room code."); return; }
 
@@ -1355,11 +1363,13 @@
                 if (!snap.exists()) { openModal("Invalid", "Lobby not found."); return; }
 
                 let lobby = snap.data();
-                lobby.players[localPlayerId] = { id: localPlayerId, name, score: 0, wildcardsUsed: 0, crossedCells: [], completedCols1st: [], completedCols2nd: [], completedColors1st: [], completedColors2nd: [], hasTakenTurn: false, isHost: false };
+                if (!lobby.players[localPlayerId]) {
+                    lobby.players[localPlayerId] = { id: localPlayerId, name, score: 0, wildcardsUsed: 0, crossedCells: [], completedCols1st: [], completedCols2nd: [], completedColors1st: [], completedColors2nd: [], hasTakenTurn: false, isHost: false };
+                }
                 await window.firebaseModules.updateDoc(ref, { players: lobby.players });
                 gameMode = 'online'; subscribeToLobby(code); toggleModeSelector();
             } else {
-                // PeerJS Client Connection with Host Failover Migration Loop
+                // PeerJS Client Connection with Host Rejoin State Restoration
                 isP2PHost = false;
                 setStatus("Connecting to room...");
                 if (p2pPeer) { try { p2pPeer.destroy(); } catch(e){} }
@@ -1389,7 +1399,12 @@
                 let crossed = []; gameState.grid.forEach(r => r.forEach(c => { if(c.crossed) crossed.push(`${c.r},${c.c}`); }));
                 p2pHostConn.send({
                     type: 'JOIN', id: localPlayerId, name,
-                    score: gameState.currentScore, crossedCells: crossed
+                    score: gameState.currentScore, crossedCells: crossed,
+                    wildcardsUsed: gameState.wildcardsUsed,
+                    completedCols1st: gameState.completedCols1st || [],
+                    completedCols2nd: gameState.completedCols2nd || [],
+                    completedColors1st: gameState.completedColors1st || [],
+                    completedColors2nd: gameState.completedColors2nd || []
                 });
                 gameMode = 'online';
                 document.getElementById('btn-reroll').classList.add('hidden');
@@ -1487,10 +1502,15 @@
             if (data.type === 'JOIN') {
                 if (!p2pLobbyState.players[data.id]) {
                     p2pLobbyState.players[data.id] = {
-                        id: data.id, name: data.name, score: data.score || 0, wildcardsUsed: 0, crossedCells: data.crossedCells || [], completedCols1st: [], completedCols2nd: [], completedColors1st: [], completedColors2nd: [], hasTakenTurn: false, isHost: false
+                        id: data.id, name: data.name, score: data.score || 0, wildcardsUsed: data.wildcardsUsed || 0, crossedCells: data.crossedCells || [], completedCols1st: data.completedCols1st || [], completedCols2nd: data.completedCols2nd || [], completedColors1st: data.completedColors1st || [], completedColors2nd: data.completedColors2nd || [], hasTakenTurn: false, isHost: false
                     };
                 } else {
-                    p2pLobbyState.players[data.id].name = data.name;
+                    // Restore/update returning player state cleanly
+                    let existing = p2pLobbyState.players[data.id];
+                    existing.name = data.name;
+                    if (data.score) existing.score = data.score;
+                    if (data.crossedCells && data.crossedCells.length > existing.crossedCells.length) existing.crossedCells = data.crossedCells;
+                    if (data.wildcardsUsed) existing.wildcardsUsed = data.wildcardsUsed;
                 }
                 if (!p2pLobbyState.playerOrder.includes(data.id)) p2pLobbyState.playerOrder.push(data.id);
                 broadcastP2PState();
