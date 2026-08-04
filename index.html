@@ -243,10 +243,10 @@
     </div>
 
     <script type="module">
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'encore-boardgame';
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'ancora-boardgame';
         let db = null, auth = null, firebaseApp = null;
-        let localPlayerId = localStorage.getItem('encore_player_id') || Math.floor(100000 + Math.random() * 900000).toString();
-        localStorage.setItem('encore_player_id', localPlayerId);
+        let localPlayerId = localStorage.getItem('ancora_player_id') || Math.floor(100000 + Math.random() * 900000).toString();
+        localStorage.setItem('ancora_player_id', localPlayerId);
 
         let gameMode = 'solo';
         let currentLobbyId = null, lobbyUnsubscribe = null;
@@ -1299,7 +1299,7 @@
                 // PeerJS Serverless Room Setup with Host Migration & Reconnection Handler
                 isP2PHost = true;
                 p2pConns = [];
-                const peerId = `encoreroom${roomCode}`;
+                const peerId = `ancoraroom${roomCode}`;
                 
                 setStatus("Connecting to room server...");
                 if (p2pPeer) { try { p2pPeer.destroy(); } catch(e){} }
@@ -1377,7 +1377,7 @@
         }
 
         function attemptGuestConnectToHost(code, name) {
-            const hostPeerId = `encoreroom${code}`;
+            const hostPeerId = `ancoraroom${code}`;
             p2pHostConn = p2pPeer.connect(hostPeerId, { reliable: true });
 
             p2pHostConn.on('open', () => {
