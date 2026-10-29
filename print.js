@@ -26,12 +26,12 @@
     for(let i=0;i<105;i++) {const v=(bytes[i>>1] >> (i%2?0:4))&15; if ((v&7)>4) throw Error('Board code contains an invalid cell.'); cells.push({color:codes[v&7],star:!!(v&8)});}
     return Array.from({length:7},(_,r)=>cells.slice(r*15,r*15+15));
   }
-  function artwork() {
+  function artwork(cardWidthUnits) {
     const gray = $('grayscale').checked;
     const fill = color => gray ? '#f0f0f0' : $('color-'+color).value;
     const letter = color => color;
     const box = (x,y,w,h,value,background='#ffffff') => `<rect class="score-box" x="${x}" y="${y}" width="${w}" height="${h}" rx="4" fill="${background}" stroke="#849083" stroke-width="1"/><text x="${x+w/2}" y="${y+h/2+4}" text-anchor="middle" font-size="12" font-weight="bold">${value}</text>`;
-    let s = '<svg xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet" viewBox="0 0 1000 760" role="img" aria-label="Blank Ancora score board"><rect x="1" y="1" width="998" height="758" fill="#fffef9"/><g font-family="Arial,sans-serif" fill="#233b30"><text x="28" y="45" font-size="30" font-weight="900">ancora!</text><path d="M28 61H972" stroke="#b8c1b0"/><text x="28" y="84" font-size="12">PLAYER _______________________</text>';
+    let s = `<svg xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet" viewBox="0 0 ${cardWidthUnits} 760" role="img" aria-label="Blank Ancora score board"><rect x="0" y="0" width="${cardWidthUnits}" height="760" fill="#fffef9"/><g font-family="Arial,sans-serif" fill="#233b30"><text x="28" y="45" font-size="30" font-weight="900">ancora!</text><path d="M28 61H743" stroke="#b8c1b0"/><text x="28" y="84" font-size="12">PLAYER _______________________</text>`;
     for(let c=0;c<15;c++) { s += box(23+c*48,98,42,42,c===7?'':String.fromCharCode(65+c),'#f5f6f0'); if(c===7) s+=`<text x="${44+c*48}" y="125" text-anchor="middle" fill="#c52626" font-size="22" font-weight="900">H</text>`; }
     board.forEach((row,r) => row.forEach((cell,c) => {
       const x=23+c*48,y=147+r*48;
@@ -52,27 +52,28 @@
       s+=box(23+c*48,536,42,42,second[c]);
     }
     s+='<text x="28" y="595" font-size="10">COLUMN BONUS · FIRST / SECOND</text>';
-    s+='<path d="M765 60V595" stroke="#b8c1b0"/><text x="785" y="84" font-size="18" font-weight="bold">COLOR BONUS</text><text x="887" y="110" text-anchor="middle" font-size="10">FIRST</text><text x="935" y="110" text-anchor="middle" font-size="10">SECOND</text>';
+    const right = cardWidthUnits-28;
+    s+=`<path d="M765 30V730" stroke="#b8c1b0"/><text x="785" y="60" font-size="18" font-weight="bold">COLOR BONUS</text><text x="${right-76}" y="88" text-anchor="middle" font-size="10">FIRST</text><text x="${right-21}" y="88" text-anchor="middle" font-size="10">SECOND</text>`;
     Object.keys(colors).forEach((color,i)=> {
-      const y=118+i*48;
+      const y=98+i*52;
       s+=`<rect x="790" y="${y}" width="42" height="42" rx="4" fill="${fill(color)}" stroke="#849083"/>`;
       if(gray) s+=`<text class="color-letter" x="811" y="${y+26}" text-anchor="middle" font-size="16" font-weight="bold">${letter(color)}</text>`;
-      s+=box(866,y,42,42,5)+box(914,y,42,42,3);
+      s+=box(right-97,y,42,42,5)+box(right-42,y,42,42,3);
     });
     s+='<text x="785" y="382" font-size="16" font-weight="bold">JOKERS</text>';
-    for(let i=0;i<8;i++) s+=`<circle cx="${795+i*22}" cy="400" r="8" fill="white" stroke="#586957"/>`;
-    s+='<path d="M785 415H968" stroke="#b8c1b0"/><text x="785" y="435" font-size="16" font-weight="bold">SCORE</text>';
+    for(let i=0;i<8;i++) s+=`<circle cx="${795+i*22}" cy="405" r="9" fill="white" stroke="#586957"/>`;
+    s+=`<path d="M785 426H${right}" stroke="#b8c1b0"/><text x="785" y="450" font-size="16" font-weight="bold">SCORE</text>`;
     const labels=['COLUMNS','COLORS','UNUSED JOKERS','UNMARKED ★ × −2','TOTAL'];
     labels.forEach((label,i)=> {
-      const y=442+i*29;
-      s+=`<text x="785" y="${y+19}" font-size="11" font-weight="bold">${label}</text>`;
-      s+=box(905,y,60,26,'',i===4?'#e4ecdf':'#ffffff');
+      const y=465+i*52;
+      s+=`<text x="785" y="${y+25}" font-size="11" font-weight="bold">${label}</text>`;
+      s+=box(right-60,y,60,40,'',i===4?'#e4ecdf':'#ffffff');
     });
     const code = encodeBoard(board);
-    s+='<path d="M28 612H972" stroke="#b8c1b0"/><text x="28" y="635" font-size="14" font-weight="bold">BOARD CODE</text>';
-    s+=`<text x="170" y="635" font-family="monospace" font-size="17" font-weight="bold">${code.slice(0,40)}</text><text x="170" y="660" font-family="monospace" font-size="17" font-weight="bold">${code.slice(40)}</text>`;
-    s+='<text x="28" y="684" font-size="11">Scan to copy this code, or enter it in Print Studio.</text>';
-    s+=AncoraQR.svg(code).replace('<svg ', '<svg x="806" y="606" width="148" height="148" ');
+    s+='<path d="M28 612H743" stroke="#b8c1b0"/><text x="195" y="634" font-size="14" font-weight="bold">BOARD CODE</text>';
+    s+=`<text x="195" y="660" font-family="monospace" font-size="17" font-weight="bold">${code.slice(0,40)}</text><text x="195" y="685" font-family="monospace" font-size="17" font-weight="bold">${code.slice(40)}</text>`;
+    s+='<text x="195" y="711" font-size="11">Scan to copy this code, or enter it in Print Studio.</text>';
+    s+=AncoraQR.svg(code).replace('<svg ', '<svg x="28" y="606" width="148" height="148" ');
     s+='</g></svg>';
     return gray ? s.replace('<svg ', '<svg style="filter:grayscale(1)" ') : s;
   }
@@ -96,7 +97,8 @@
     const sheet=$('sheet');
     Object.assign(sheet.style,{width:`${w}mm`,height:`${h}mm`,padding:`${margin}mm`,gap:`${gap}mm`,gridTemplateColumns:`repeat(${cols},minmax(0,1fr))`,gridTemplateRows:`repeat(${rows},minmax(0,1fr))`});
     sheet.classList.toggle('guides',$('guides').checked);
-    const image=artwork();
+    const artworkWidth = $('scaling').value === 'fill' ? Math.max(1000,cw/ch*760) : 1000;
+    const image=artwork(artworkWidth);
     sheet.innerHTML=Array.from({length:cols*rows},()=>`<div class="card" style="width:${$('scaling').value==='fill'?cw:cardWidth}mm;height:${$('scaling').value==='fill'?ch:cardWidth*760/1000}mm">${image}</div>`).join('');
     const sharedCuts = gap === 0 && $('scaling').value === 'fill';
     sheet.classList.toggle('shared-cuts', sharedCuts);
