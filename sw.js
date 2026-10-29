@@ -1,7 +1,11 @@
-const CACHE_NAME = 'ancora-v14';
+const CACHE_NAME = 'ancora-v24';
 const ASSETS_TO_CACHE = [
   './manifest.json',
-  './icon.svg'
+  './icon.svg',
+  './print.html',
+  './print.css',
+  './print.js',
+  './qr.js'
 ];
 
 self.addEventListener('install', (event) => {
@@ -18,7 +22,7 @@ self.addEventListener('activate', (event) => {
     caches.keys().then((cacheNames) => {
       return Promise.all(
         cacheNames.map((cache) => {
-          if (cache !== CACHE_NAME) {
+          if (cache.startsWith('ancora-') && cache !== CACHE_NAME) {
             return caches.delete(cache);
           }
         })
@@ -38,7 +42,7 @@ self.addEventListener('fetch', (event) => {
           caches.open(CACHE_NAME).then((cache) => cache.put(event.request, responseClone));
           return networkResponse;
         })
-        .catch(() => caches.match(event.request).then(cached => cached || caches.match('./index.html')))
+        .catch(() => caches.match(event.request).then(cached => cached || Response.error()))
     );
     return;
   }

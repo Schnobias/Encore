@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ancora — Print studio</title>
+<link rel="stylesheet" href="print.css"><script src="qr.js" defer></script><script src="print.js" defer></script>
+<style id="paper-style"></style>
+</head>
+<body>
+<aside>
+  <a href="./index.html" class="brand">ancora<span>!</span></a>
+  <div class="eyebrow">FROM SCREEN TO TABLE</div>
+  <h1>Your board.<br>Your whole table.</h1>
+  <p class="intro">One layout, repeated beautifully. Make a sheet for game night, or save it as a PDF for later.</p>
+  <form id="settings">
+    <details class="board-tools">
+      <summary>Board code · copy or restore</summary>
+      <label>Current board code<input id="current-code" type="text" readonly aria-label="Current board code"></label>
+      <button type="button" id="copy-code" class="secondary">Copy code</button>
+      <label>Restore a board for printing<input id="board-code" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Paste code from a card"></label>
+      <button type="button" id="restore-board" class="secondary">Restore board</button><p id="code-message" role="status" aria-live="polite"></p>
+    </details>
+    <label>Paper<select id="paper"><option value="210,297">A4</option><option value="297,420">A3</option><option value="215.9,279.4">Letter</option><option value="215.9,355.6">Legal</option><option value="148,210">A5</option><option value="custom">Custom size</option></select></label>
+    <div class="pair" id="custom" hidden><label>Width (mm)<input id="width" type="number" value="210" min="50" max="2000" step="0.1"></label><label>Height (mm)<input id="height" type="number" value="297" min="50" max="2000" step="0.1"></label></div>
+    <label>Orientation<select id="orientation"><option value="portrait">Portrait</option><option value="landscape">Landscape</option></select></label>
+    <div class="pair"><label>Columns<input id="columns" type="number" value="2" min="1" max="10"></label><label>Rows<input id="rows" type="number" value="4" min="1" max="10"></label></div>
+    <div class="pair"><label>Margin (mm)<input id="margin" type="number" value="3" min="0" max="100" step="0.5"></label><label>Gap (mm)<input id="gap" type="number" value="0" min="0" max="30" step="0.5"></label></div>
+    <label>Card placement<select id="scaling"><option value="fill">Shared grid cuts</option><option value="fit">Individual card outlines</option></select></label>
+    <details class="board-tools"><summary>Custom colors</summary>
+      <div class="palette"><label>Green<input id="color-G" type="color" value="#82bc83"></label><label>Yellow<input id="color-Y" type="color" value="#f1d968"></label><label>Blue<input id="color-B" type="color" value="#8bbfda"></label><label>Red<input id="color-R" type="color" value="#e59591"></label><label>Orange<input id="color-O" type="color" value="#eeb77b"></label></div>
+    </details>
+    <label class="check"><input id="grayscale" type="checkbox"> Grayscale (with color letters)</label>
+    <label class="check"><input id="guides" type="checkbox" checked> Cutting guides</label>
+    <p id="status" role="status" aria-live="polite"></p>
+    <button type="button" id="print">Print / Save PDF <span>↗</span></button>
+  </form>
+  <p class="hint">Choose your printer or “Save as PDF”. Match the paper size, use 100% scale, enable background graphics, and turn off headers and footers. Increase the margin if your printer clips the edges. Custom sizes depend on your printer.</p>
+</aside>
+<main><div class="preview-heading"><span>SHEET PREVIEW</span><span id="summary"></span></div><div id="preview"><section id="sheet" aria-label="Printable sheet of identical boards"></section></div></main>
+</body></html>

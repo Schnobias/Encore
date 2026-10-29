@@ -149,6 +149,7 @@
                 <span id="turn-counter" class="fancy-font text-base md:text-lg text-emerald-400">30</span>
             </div>
             <div class="flex gap-1">
+                <button onclick="openPrintStudio()" class="bg-amber-400 text-slate-950 text-xs font-bold px-2 py-1 rounded-lg" title="Print identical boards or save as PDF">Print / PDF</button>
                 <button id="btn-reroll" onclick="regenerateBoard()" class="bg-slate-800 hover:bg-slate-700 text-[9px] md:text-[10px] font-bold uppercase py-1 px-1.5 md:px-2 rounded-lg transition-colors ml-1">
                     🔄 <span class="hidden md:inline">New</span>
                 </button>
@@ -386,6 +387,13 @@
         const COL_POW_1ST = [5, 3, 3, 3, 2, 2, 2, 1, 2, 2, 2, 3, 3, 3, 5];
         const COL_POW_2ND = [3, 2, 2, 2, 1, 1, 1, 0, 1, 1, 1, 2, 2, 2, 3];
         const ROWS = 7, COLS = 15;
+        window.openPrintStudio = () => {
+            if (!gameState.grid?.length) { alert('Please wait for a board to finish generating.'); return; }
+            try {
+                localStorage.setItem('ancora-print-board', JSON.stringify(gameState.grid.map(row => row.map(({color, star}) => ({color, star})))));
+                window.open('./print.html', '_blank', 'noopener');
+            } catch { alert('The board could not be prepared for printing. Please allow browser storage and try again.'); }
+        };
 
         let gameState = {
             grid: [], turnsLeft: 30, wildcardsUsed: 0,
