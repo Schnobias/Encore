@@ -1,11 +1,12 @@
-const CACHE_NAME = 'ancora-v25';
+const CACHE_NAME = 'ancora-v26';
 const ASSETS_TO_CACHE = [
   './manifest.json',
   './icon.svg',
   './print.html',
   './print.css',
   './print.js',
-  './qr.js'
+  './qr.js',
+  './board-generator.js'
 ];
 
 self.addEventListener('install', (event) => {

@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Ancora — Print studio</title>
-<link rel="stylesheet" href="print.css"><script src="qr.js" defer></script><script src="print.js" defer></script>
+<link rel="stylesheet" href="print.css"><script src="qr.js" defer></script><script src="board-generator.js" defer></script><script src="print.js" defer></script>
 <style id="paper-style"></style>
 </head>
 <body>
@@ -13,6 +13,7 @@
   <h1>Your board.<br>Your whole table.</h1>
   <p class="intro">One layout, repeated beautifully. Make a sheet for game night, or save it as a PDF for later.</p>
   <form id="settings">
+    <button type="button" id="new-board" class="secondary">Generate new board</button><p id="generation-status" role="status" aria-live="polite"></p>
     <details class="board-tools">
       <summary>Board code · copy or restore</summary>
       <label>Current board code<input id="current-code" type="text" readonly aria-label="Current board code"></label>

@@ -31,25 +31,25 @@
     const fill = color => gray ? '#f0f0f0' : $('color-'+color).value;
     const letter = color => color;
     const box = (x,y,w,h,value,background='#ffffff') => `<rect class="score-box" x="${x}" y="${y}" width="${w}" height="${h}" rx="4" fill="${background}" stroke="#849083" stroke-width="1"/><text x="${x+w/2}" y="${y+h/2+4}" text-anchor="middle" font-size="12" font-weight="bold">${value}</text>`;
-    let s = `<svg xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet" viewBox="0 0 ${cardWidthUnits} 760" role="img" aria-label="Blank Ancora score board"><rect x="0" y="0" width="${cardWidthUnits}" height="760" fill="#fffef9"/><g font-family="Arial,sans-serif" fill="#233b30"><text x="28" y="45" font-size="30" font-weight="900">ancora!</text><path d="M28 61H743" stroke="#b8c1b0"/><text x="28" y="84" font-size="12">PLAYER _______________________</text>`;
-    for(let c=0;c<15;c++) { s += box(23+c*48,98,42,42,c===7?'':String.fromCharCode(65+c),'#f5f6f0'); if(c===7) s+=`<text x="${44+c*48}" y="125" text-anchor="middle" fill="#c52626" font-size="22" font-weight="900">H</text>`; }
+    let s = `<svg xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet" viewBox="0 0 ${cardWidthUnits} 760" role="img" aria-label="Blank Ancora score board"><rect x="0" y="0" width="${cardWidthUnits}" height="760" fill="#fffef9"/><g font-family="Arial,sans-serif" fill="#233b30"><text x="28" y="45" font-size="30" font-weight="900">ancora!</text><path d="M28 61H743" stroke="#b8c1b0"/>`;
+    for(let c=0;c<15;c++) { s += box(12+c*50,68,46,46,c===7?'':String.fromCharCode(65+c),'#f5f6f0'); if(c===7) s+=`<text x="${35+c*50}" y="98" text-anchor="middle" fill="#c52626" font-size="22" font-weight="900">H</text>`; }
     board.forEach((row,r) => row.forEach((cell,c) => {
-      const x=23+c*48,y=147+r*48;
-      s+=`<rect x="${x}" y="${y}" width="48" height="48" fill="${fill(cell.color)}" stroke="#ffffff" stroke-width="1"/>`;
+      const x=10+c*50,y=120+r*50;
+      s+=`<rect x="${x}" y="${y}" width="50" height="50" fill="${fill(cell.color)}" stroke="#ffffff" stroke-width="1"/>`;
       if(gray) s+=`<text class="color-letter" x="${x+5}" y="${y+12}" font-size="10" font-weight="bold">${letter(cell.color)}</text>`;
-      if(cell.star) s+=`<path transform="translate(${x+24},${y+24})" d="M0 -9 2.6 -3 9 -3 4 1 6 8 0 4 -6 8 -4 1 -9 -3 -2.6 -3Z" fill="#233b30"/>`;
+      if(cell.star) s+=`<path transform="translate(${x+25},${y+25})" d="M0 -9 2.6 -3 9 -3 4 1 6 8 0 4 -6 8 -4 1 -9 -3 -2.6 -3Z" fill="#233b30"/>`;
     }));
     board.forEach((row,r)=>row.forEach((cell,c)=> {
-      const x=23+c*48,y=147+r*48;
+      const x=10+c*50,y=120+r*50;
       const edge=(dx,dy)=>r+dy<0||r+dy>=7||c+dx<0||c+dx>=15||board[r+dy][c+dx].color!==cell.color;
-      if(edge(0,-1)) s+=`<path d="M${x} ${y}h48" stroke="#52645a" stroke-width="2"/>`;
-      if(edge(-1,0)) s+=`<path d="M${x} ${y}v48" stroke="#52645a" stroke-width="2"/>`;
-      if(r===6) s+=`<path d="M${x} ${y+48}h48" stroke="#52645a" stroke-width="2"/>`;
-      if(c===14) s+=`<path d="M${x+48} ${y}v48" stroke="#52645a" stroke-width="2"/>`;
+      if(edge(0,-1)) s+=`<path d="M${x} ${y}h50" stroke="#52645a" stroke-width="2"/>`;
+      if(edge(-1,0)) s+=`<path d="M${x} ${y}v50" stroke="#52645a" stroke-width="2"/>`;
+      if(r===6) s+=`<path d="M${x} ${y+50}h50" stroke="#52645a" stroke-width="2"/>`;
+      if(c===14) s+=`<path d="M${x+50} ${y}v50" stroke="#52645a" stroke-width="2"/>`;
     }));
     for(let c=0;c<15;c++) {
-      s+=box(23+c*48,490,42,42,first[c]);
-      s+=box(23+c*48,536,42,42,second[c]);
+      s+=box(12+c*50,478,46,46,first[c]);
+      s+=box(12+c*50,528,46,46,second[c]);
     }
     s+='<text x="28" y="595" font-size="10">COLUMN BONUS · FIRST / SECOND</text>';
     const right = cardWidthUnits-28;
@@ -90,7 +90,7 @@
     const cols=+$('columns').value,rows=+$('rows').value,margin=+$('margin').value,gap=+$('gap').value;
     const cw=(w-2*margin-(cols-1)*gap)/cols,ch=(h-2*margin-(rows-1)*gap)/rows;
     if(cw<=0||ch<=0){$('status').textContent='This grid does not fit. Reduce the margin, gap, or grid count.';$('print').disabled=true;return;}
-    const cardWidth=Math.min(cw,ch*1000/760),cellSize=Math.min(cw/1000,ch/760)*48;
+    const cardWidth=Math.min(cw,ch*1000/760),cellSize=Math.min(cw/1000,ch/760)*50;
     $('status').textContent=cellSize<3.5?'These boards are very small. Fewer rows or columns will make them easier to play.':`${cols*rows} identical boards. Blank copies keep your game progress untouched.`;
     $('print').disabled=false;
     $('summary').textContent=`${w} × ${h} mm · ${cols} × ${rows}`;
@@ -113,6 +113,20 @@
     fitPreview();
   }
   function fitPreview(){const sheet=$('sheet');sheet.style.zoom=1;sheet.style.zoom=Math.min(1,Math.max(0.1,($('preview').clientWidth-20)/(sheet.offsetWidth||1)));}
+  $('new-board').addEventListener('click', async () => {
+    const button=$('new-board');
+    button.disabled=true;
+    $('generation-status').textContent='Generating a new board…';
+    try {
+      const fresh=await window.generatePrintBoard();
+      if (!isValidBoard(fresh)) throw new Error('Generated board is invalid.');
+      localStorage.setItem('ancora-print-board',JSON.stringify(fresh));
+      board=fresh;
+      $('generation-status').textContent='New board ready. Your current game is unchanged.';
+      update();
+    } catch (error) { $('generation-status').textContent='Could not generate a board. Please try again.'; }
+    finally { button.disabled=false; }
+  });
   $('restore-board').addEventListener('click', () => {
     try {
       const restored=decodeBoard($('board-code').value.replace(/\s/g,''));
