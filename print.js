@@ -31,7 +31,7 @@
     const fill = color => gray ? '#f0f0f0' : $('color-'+color).value;
     const letter = color => color;
     const box = (x,y,w,h,value,background='#ffffff') => `<rect class="score-box" x="${x}" y="${y}" width="${w}" height="${h}" rx="4" fill="${background}" stroke="#849083" stroke-width="1"/><text x="${x+w/2}" y="${y+h/2}" dominant-baseline="central" text-anchor="middle" font-size="27" font-weight="bold">${value}</text>`;
-    let s = `<svg xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet" viewBox="0 0 ${cardWidthUnits} 760" role="img" aria-label="Blank Ancora score board"><rect x="0" y="0" width="${cardWidthUnits}" height="760" fill="#fffef9"/><g font-family="Arial,sans-serif" fill="#233b30"><rect x="14" y="5" width="745" height="750" rx="4" fill="none" stroke="#849083" stroke-width="1.5"/><rect x="25" y="9" width="190" height="50" rx="12" fill="#244c3d"/><text x="37" y="46" font-size="38" font-weight="900" letter-spacing="-1" fill="#fffef9">ancora<tspan fill="#f1d968">!</tspan></text><path d="M228 35H743" stroke="#b8c1b0"/>`;
+    let s = `<svg xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet" viewBox="0 0 ${cardWidthUnits} 760" role="img" aria-label="Blank Ancora score board"><rect x="0" y="0" width="${cardWidthUnits}" height="760" fill="#fffef9"/><g font-family="Arial,sans-serif" fill="#233b30"><rect x="25" y="9" width="190" height="50" rx="12" fill="#244c3d"/><text x="37" y="46" font-size="38" font-weight="900" letter-spacing="-1" fill="#fffef9">ancora<tspan fill="#f1d968">!</tspan></text><path d="M228 35H743" stroke="#b8c1b0"/>`;
     for(let c=0;c<15;c++) { s += box(27+c*48,68,44,44,c===7?'':String.fromCharCode(65+c),'#f5f6f0'); if(c===7) s+=`<text x="${49+c*48}" y="98" text-anchor="middle" fill="#c52626" font-size="24" font-weight="900">H</text>`; }
     board.forEach((row,r) => row.forEach((cell,c) => {
       const x=25+c*48,y=120+r*48;
@@ -61,7 +61,8 @@
       s+=box(right-97,y,42,42,5)+box(right-42,y,42,42,3);
     });
     s+='<text x="799" y="382" font-size="23" font-weight="bold">JOKERS</text>';
-    for(let i=0;i<8;i++) s+=`<circle cx="${809+i*(right-809-10)/7}" cy="405" r="9" fill="white" stroke="#586957"/>`;
+    const jokerRadius = Math.min(13,(right-799)/18);
+    for(let i=0;i<8;i++) s+=`<circle cx="${799+jokerRadius+i*(right-799-2*jokerRadius)/7}" cy="405" r="${jokerRadius}" fill="white" stroke="#586957"/>`;
     s+=`<path d="M799 426H${right}" stroke="#b8c1b0"/><text x="799" y="450" font-size="23" font-weight="bold">SCORE</text>`;
     const labels=['COLUMNS','COLORS','JOKERS LEFT','STARS × −2','TOTAL'];
     labels.forEach((label,i)=> {
@@ -73,7 +74,9 @@
     s+='<path d="M220 612H743" stroke="#b8c1b0"/><text x="220" y="634" font-size="22" font-weight="bold">BOARD CODE</text>';
     s+=`<text x="220" y="660" font-family="monospace" font-size="21" font-weight="bold" textLength="510" lengthAdjust="spacingAndGlyphs">${code.slice(0,40)}</text><text x="220" y="685" font-family="monospace" font-size="21" font-weight="bold" textLength="510" lengthAdjust="spacingAndGlyphs">${code.slice(40)}</text>`;
     s+='<text x="220" y="711" font-size="14">Scan to copy this code, or enter it in Print Studio.</text>';
-    s+=AncoraQR.svg(code).replace('<svg ', '<svg x="18" y="578" width="176" height="176" ');
+    // Align the visible QR modules with the grid; preserve the QR's white quiet zone.
+    const qrX = 25 - 176 * 4 / (AncoraQR.matrix(code).length + 8);
+    s+=AncoraQR.svg(code).replace('<svg ', `<svg x="${qrX}" y="578" width="176" height="176" `);
     s+='</g></svg>';
     return gray ? s.replace('<svg ', '<svg style="filter:grayscale(1)" ') : s;
   }

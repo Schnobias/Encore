@@ -1,4 +1,4 @@
-const CACHE_NAME = 'ancora-v30';
+const CACHE_NAME = 'ancora-v31';
 const ASSETS_TO_CACHE = [
   './manifest.json',
   './icon.svg',
