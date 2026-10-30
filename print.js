@@ -51,7 +51,7 @@
       s+=box(12+c*50,478,46,46,first[c]);
       s+=box(12+c*50,528,46,46,second[c]);
     }
-    s+='<text x="28" y="595" font-size="10">COLUMN BONUS · FIRST / SECOND</text>';
+    s+='<text x="220" y="595" font-size="10">COLUMN BONUS · FIRST / SECOND</text>';
     const right = cardWidthUnits-28;
     s+=`<path d="M765 30V730" stroke="#b8c1b0"/><text x="785" y="60" font-size="18" font-weight="bold">COLOR BONUS</text><text x="${right-76}" y="88" text-anchor="middle" font-size="10">FIRST</text><text x="${right-21}" y="88" text-anchor="middle" font-size="10">SECOND</text>`;
     Object.keys(colors).forEach((color,i)=> {
@@ -70,10 +70,10 @@
       s+=box(right-60,y,60,40,'',i===4?'#e4ecdf':'#ffffff');
     });
     const code = encodeBoard(board);
-    s+='<path d="M28 612H743" stroke="#b8c1b0"/><text x="195" y="634" font-size="14" font-weight="bold">BOARD CODE</text>';
-    s+=`<text x="195" y="660" font-family="monospace" font-size="17" font-weight="bold">${code.slice(0,40)}</text><text x="195" y="685" font-family="monospace" font-size="17" font-weight="bold">${code.slice(40)}</text>`;
-    s+='<text x="195" y="711" font-size="11">Scan to copy this code, or enter it in Print Studio.</text>';
-    s+=AncoraQR.svg(code).replace('<svg ', '<svg x="28" y="606" width="148" height="148" ');
+    s+='<path d="M220 612H743" stroke="#b8c1b0"/><text x="220" y="634" font-size="14" font-weight="bold">BOARD CODE</text>';
+    s+=`<text x="220" y="660" font-family="monospace" font-size="17" font-weight="bold">${code.slice(0,40)}</text><text x="220" y="685" font-family="monospace" font-size="17" font-weight="bold">${code.slice(40)}</text>`;
+    s+='<text x="220" y="711" font-size="11">Scan to copy this code, or enter it in Print Studio.</text>';
+    s+=AncoraQR.svg(code).replace('<svg ', '<svg x="18" y="578" width="176" height="176" ');
     s+='</g></svg>';
     return gray ? s.replace('<svg ', '<svg style="filter:grayscale(1)" ') : s;
   }
