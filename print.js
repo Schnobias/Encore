@@ -75,9 +75,9 @@
     s+=`<text x="220" y="660" font-family="monospace" font-size="21" font-weight="bold" textLength="510" lengthAdjust="spacingAndGlyphs">${code.slice(0,40)}</text><text x="220" y="685" font-family="monospace" font-size="21" font-weight="bold" textLength="510" lengthAdjust="spacingAndGlyphs">${code.slice(40)}</text>`;
     s+='<text x="220" y="711" font-size="14">Scan to copy this code, or enter it in Print Studio.</text>';
     // Align the visible QR modules with the grid; preserve the QR's white quiet zone.
-    const qrSize = 180;
+    const qrSize = 188;
     const qrX = 25 - qrSize * 4 / (AncoraQR.matrix(code).length + 8);
-    s+=AncoraQR.svg(code).replace('<svg ', `<svg x="${qrX}" y="578" width="${qrSize}" height="${qrSize}" `);
+    s+=AncoraQR.svg(code).replace('<svg ', `<svg x="${qrX}" y="570" width="${qrSize}" height="${qrSize}" `);
     s+='</g></svg>';
     return gray ? s.replace('<svg ', '<svg style="filter:grayscale(1)" ') : s;
   }
