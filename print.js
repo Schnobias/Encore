@@ -31,7 +31,7 @@
     const fill = color => gray ? '#f0f0f0' : $('color-'+color).value;
     const letter = color => color;
     const box = (x,y,w,h,value,background='#ffffff') => `<rect class="score-box" x="${x}" y="${y}" width="${w}" height="${h}" rx="4" fill="${background}" stroke="#849083" stroke-width="1"/><text x="${x+w/2}" y="${y+h/2}" dominant-baseline="central" text-anchor="middle" font-size="27" font-weight="bold">${value}</text>`;
-    let s = `<svg xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet" viewBox="0 0 ${cardWidthUnits} 760" role="img" aria-label="Blank Ancora score board"><rect x="0" y="0" width="${cardWidthUnits}" height="760" fill="#fffef9"/><g font-family="Arial,sans-serif" fill="#233b30"><rect x="22" y="14" width="156" height="42" rx="12" fill="#244c3d"/><text x="35" y="44" font-size="30" font-weight="900" letter-spacing="-1" fill="#fffef9">ancora<tspan fill="#f1d968">!</tspan></text><path d="M190 35H743" stroke="#b8c1b0"/>`;
+    let s = `<svg xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet" viewBox="0 0 ${cardWidthUnits} 760" role="img" aria-label="Blank Ancora score board"><rect x="0" y="0" width="${cardWidthUnits}" height="760" fill="#fffef9"/><g font-family="Arial,sans-serif" fill="#233b30"><rect x="14" y="5" width="745" height="750" rx="4" fill="none" stroke="#849083" stroke-width="1.5"/><rect x="25" y="9" width="190" height="50" rx="12" fill="#244c3d"/><text x="37" y="46" font-size="38" font-weight="900" letter-spacing="-1" fill="#fffef9">ancora<tspan fill="#f1d968">!</tspan></text><path d="M228 35H743" stroke="#b8c1b0"/>`;
     for(let c=0;c<15;c++) { s += box(27+c*48,68,44,44,c===7?'':String.fromCharCode(65+c),'#f5f6f0'); if(c===7) s+=`<text x="${49+c*48}" y="98" text-anchor="middle" fill="#c52626" font-size="24" font-weight="900">H</text>`; }
     board.forEach((row,r) => row.forEach((cell,c) => {
       const x=25+c*48,y=120+r*48;
@@ -53,26 +53,26 @@
     }
     s+='<text x="220" y="595" font-size="10">COLUMN BONUS · FIRST / SECOND</text>';
     const right = cardWidthUnits-28;
-    s+=`<path d="M780 24V736" stroke="#b8c1b0"/><text x="799" y="60" font-size="18" font-weight="bold">COLOR BONUS</text><text x="${right-76}" y="88" text-anchor="middle" font-size="10">FIRST</text><text x="${right-21}" y="88" text-anchor="middle" font-size="10">SECOND</text>`;
+    s+=`<path d="M780 24V736" stroke="#b8c1b0"/><text x="799" y="60" font-size="24" font-weight="bold">COLOUR BONUS</text><text x="${right-76}" y="88" text-anchor="middle" font-size="10">FIRST</text><text x="${right-21}" y="88" text-anchor="middle" font-size="10">SECOND</text>`;
     Object.keys(colors).forEach((color,i)=> {
       const y=98+i*52;
       s+=`<rect x="804" y="${y}" width="42" height="42" rx="4" fill="${fill(color)}" stroke="#849083"/>`;
       if(gray) s+=`<text class="color-letter" x="825" y="${y+26}" text-anchor="middle" font-size="16" font-weight="bold">${letter(color)}</text>`;
       s+=box(right-97,y,42,42,5)+box(right-42,y,42,42,3);
     });
-    s+='<text x="799" y="382" font-size="16" font-weight="bold">JOKERS</text>';
-    for(let i=0;i<8;i++) s+=`<circle cx="${809+i*19}" cy="405" r="9" fill="white" stroke="#586957"/>`;
-    s+=`<path d="M799 426H${right}" stroke="#b8c1b0"/><text x="799" y="450" font-size="16" font-weight="bold">SCORE</text>`;
+    s+='<text x="799" y="382" font-size="23" font-weight="bold">JOKERS</text>';
+    for(let i=0;i<8;i++) s+=`<circle cx="${809+i*(right-809-10)/7}" cy="405" r="9" fill="white" stroke="#586957"/>`;
+    s+=`<path d="M799 426H${right}" stroke="#b8c1b0"/><text x="799" y="450" font-size="23" font-weight="bold">SCORE</text>`;
     const labels=['COLUMNS','COLORS','JOKERS LEFT','STARS × −2','TOTAL'];
     labels.forEach((label,i)=> {
       const y=465+i*52;
-      s+=`<text x="799" y="${y+25}" font-size="14" font-weight="bold">${label}</text>`;
+      s+=`<text x="799" y="${y+27}" font-size="22" font-weight="bold" textLength="${Math.min(label.length*13,right-870)}" lengthAdjust="spacingAndGlyphs">${label}</text>`;
       s+=box(right-60,y,60,40,'',i===4?'#e4ecdf':'#ffffff');
     });
     const code = encodeBoard(board);
-    s+='<path d="M220 612H743" stroke="#b8c1b0"/><text x="220" y="634" font-size="14" font-weight="bold">BOARD CODE</text>';
-    s+=`<text x="220" y="660" font-family="monospace" font-size="17" font-weight="bold">${code.slice(0,40)}</text><text x="220" y="685" font-family="monospace" font-size="17" font-weight="bold">${code.slice(40)}</text>`;
-    s+='<text x="220" y="711" font-size="11">Scan to copy this code, or enter it in Print Studio.</text>';
+    s+='<path d="M220 612H743" stroke="#b8c1b0"/><text x="220" y="634" font-size="22" font-weight="bold">BOARD CODE</text>';
+    s+=`<text x="220" y="660" font-family="monospace" font-size="21" font-weight="bold" textLength="510" lengthAdjust="spacingAndGlyphs">${code.slice(0,40)}</text><text x="220" y="685" font-family="monospace" font-size="21" font-weight="bold" textLength="510" lengthAdjust="spacingAndGlyphs">${code.slice(40)}</text>`;
+    s+='<text x="220" y="711" font-size="14">Scan to copy this code, or enter it in Print Studio.</text>';
     s+=AncoraQR.svg(code).replace('<svg ', '<svg x="18" y="578" width="176" height="176" ');
     s+='</g></svg>';
     return gray ? s.replace('<svg ', '<svg style="filter:grayscale(1)" ') : s;
