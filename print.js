@@ -30,43 +30,43 @@
     const gray = $('grayscale').checked;
     const fill = color => gray ? '#f0f0f0' : $('color-'+color).value;
     const letter = color => color;
-    const box = (x,y,w,h,value,background='#ffffff') => `<rect class="score-box" x="${x}" y="${y}" width="${w}" height="${h}" rx="4" fill="${background}" stroke="#849083" stroke-width="1"/><text x="${x+w/2}" y="${y+h/2}" dominant-baseline="central" text-anchor="middle" font-size="21" font-weight="bold">${value}</text>`;
-    let s = `<svg xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet" viewBox="0 0 ${cardWidthUnits} 760" role="img" aria-label="Blank Ancora score board"><rect x="0" y="0" width="${cardWidthUnits}" height="760" fill="#fffef9"/><g font-family="Arial,sans-serif" fill="#233b30"><rect x="4" y="4" width="759" height="752" rx="5" fill="none" stroke="#849083" stroke-width="1.5"/><rect x="22" y="14" width="156" height="42" rx="12" fill="#244c3d"/><text x="35" y="44" font-size="30" font-weight="900" letter-spacing="-1" fill="#fffef9">ancora<tspan fill="#f1d968">!</tspan></text><path d="M190 35H743" stroke="#b8c1b0"/>`;
-    for(let c=0;c<15;c++) { s += box(12+c*50,68,46,46,c===7?'':String.fromCharCode(65+c),'#f5f6f0'); if(c===7) s+=`<text x="${35+c*50}" y="98" text-anchor="middle" fill="#c52626" font-size="24" font-weight="900">H</text>`; }
+    const box = (x,y,w,h,value,background='#ffffff') => `<rect class="score-box" x="${x}" y="${y}" width="${w}" height="${h}" rx="4" fill="${background}" stroke="#849083" stroke-width="1"/><text x="${x+w/2}" y="${y+h/2}" dominant-baseline="central" text-anchor="middle" font-size="27" font-weight="bold">${value}</text>`;
+    let s = `<svg xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet" viewBox="0 0 ${cardWidthUnits} 760" role="img" aria-label="Blank Ancora score board"><rect x="0" y="0" width="${cardWidthUnits}" height="760" fill="#fffef9"/><g font-family="Arial,sans-serif" fill="#233b30"><rect x="22" y="14" width="156" height="42" rx="12" fill="#244c3d"/><text x="35" y="44" font-size="30" font-weight="900" letter-spacing="-1" fill="#fffef9">ancora<tspan fill="#f1d968">!</tspan></text><path d="M190 35H743" stroke="#b8c1b0"/>`;
+    for(let c=0;c<15;c++) { s += box(27+c*48,68,44,44,c===7?'':String.fromCharCode(65+c),'#f5f6f0'); if(c===7) s+=`<text x="${49+c*48}" y="98" text-anchor="middle" fill="#c52626" font-size="24" font-weight="900">H</text>`; }
     board.forEach((row,r) => row.forEach((cell,c) => {
-      const x=10+c*50,y=120+r*50;
-      s+=`<rect x="${x}" y="${y}" width="50" height="50" fill="${fill(cell.color)}" stroke="#ffffff" stroke-width="1"/>`;
+      const x=25+c*48,y=120+r*48;
+      s+=`<rect x="${x}" y="${y}" width="48" height="48" fill="${fill(cell.color)}" stroke="#ffffff" stroke-width="1"/>`;
       if(gray) s+=`<text class="color-letter" x="${x+5}" y="${y+16}" font-size="14" font-weight="bold">${letter(cell.color)}</text>`;
-      if(cell.star) s+=`<path transform="translate(${x+25},${y+25})" d="M0 -9 2.6 -3 9 -3 4 1 6 8 0 4 -6 8 -4 1 -9 -3 -2.6 -3Z" fill="#233b30"/>`;
+      if(cell.star) s+=`<path transform="translate(${x+24},${y+24})" d="M0 -9 2.6 -3 9 -3 4 1 6 8 0 4 -6 8 -4 1 -9 -3 -2.6 -3Z" fill="#233b30"/>`;
     }));
     board.forEach((row,r)=>row.forEach((cell,c)=> {
-      const x=10+c*50,y=120+r*50;
+      const x=25+c*48,y=120+r*48;
       const edge=(dx,dy)=>r+dy<0||r+dy>=7||c+dx<0||c+dx>=15||board[r+dy][c+dx].color!==cell.color;
-      if(edge(0,-1)) s+=`<path d="M${x} ${y}h50" stroke="#52645a" stroke-width="2"/>`;
-      if(edge(-1,0)) s+=`<path d="M${x} ${y}v50" stroke="#52645a" stroke-width="2"/>`;
-      if(r===6) s+=`<path d="M${x} ${y+50}h50" stroke="#52645a" stroke-width="2"/>`;
-      if(c===14) s+=`<path d="M${x+50} ${y}v50" stroke="#52645a" stroke-width="2"/>`;
+      if(edge(0,-1)) s+=`<path d="M${x} ${y}h48" stroke="#52645a" stroke-width="2"/>`;
+      if(edge(-1,0)) s+=`<path d="M${x} ${y}v48" stroke="#52645a" stroke-width="2"/>`;
+      if(r===6) s+=`<path d="M${x} ${y+48}h48" stroke="#52645a" stroke-width="2"/>`;
+      if(c===14) s+=`<path d="M${x+48} ${y}v48" stroke="#52645a" stroke-width="2"/>`;
     }));
     for(let c=0;c<15;c++) {
-      s+=box(12+c*50,478,46,46,first[c]);
-      s+=box(12+c*50,528,46,46,second[c]);
+      s+=box(27+c*48,470,44,44,first[c]);
+      s+=box(27+c*48,520,44,44,second[c]);
     }
     s+='<text x="220" y="595" font-size="10">COLUMN BONUS · FIRST / SECOND</text>';
     const right = cardWidthUnits-28;
-    s+=`<path d="M765 30V730" stroke="#b8c1b0"/><text x="785" y="60" font-size="18" font-weight="bold">COLOR BONUS</text><text x="${right-76}" y="88" text-anchor="middle" font-size="10">FIRST</text><text x="${right-21}" y="88" text-anchor="middle" font-size="10">SECOND</text>`;
+    s+=`<path d="M780 24V736" stroke="#b8c1b0"/><text x="799" y="60" font-size="18" font-weight="bold">COLOR BONUS</text><text x="${right-76}" y="88" text-anchor="middle" font-size="10">FIRST</text><text x="${right-21}" y="88" text-anchor="middle" font-size="10">SECOND</text>`;
     Object.keys(colors).forEach((color,i)=> {
       const y=98+i*52;
-      s+=`<rect x="790" y="${y}" width="42" height="42" rx="4" fill="${fill(color)}" stroke="#849083"/>`;
-      if(gray) s+=`<text class="color-letter" x="811" y="${y+26}" text-anchor="middle" font-size="16" font-weight="bold">${letter(color)}</text>`;
+      s+=`<rect x="804" y="${y}" width="42" height="42" rx="4" fill="${fill(color)}" stroke="#849083"/>`;
+      if(gray) s+=`<text class="color-letter" x="825" y="${y+26}" text-anchor="middle" font-size="16" font-weight="bold">${letter(color)}</text>`;
       s+=box(right-97,y,42,42,5)+box(right-42,y,42,42,3);
     });
-    s+='<text x="785" y="382" font-size="16" font-weight="bold">JOKERS</text>';
-    for(let i=0;i<8;i++) s+=`<circle cx="${795+i*22}" cy="405" r="9" fill="white" stroke="#586957"/>`;
-    s+=`<path d="M785 426H${right}" stroke="#b8c1b0"/><text x="785" y="450" font-size="16" font-weight="bold">SCORE</text>`;
-    const labels=['COLUMNS','COLORS','UNUSED JOKERS','STARS LEFT × −2','TOTAL'];
+    s+='<text x="799" y="382" font-size="16" font-weight="bold">JOKERS</text>';
+    for(let i=0;i<8;i++) s+=`<circle cx="${809+i*19}" cy="405" r="9" fill="white" stroke="#586957"/>`;
+    s+=`<path d="M799 426H${right}" stroke="#b8c1b0"/><text x="799" y="450" font-size="16" font-weight="bold">SCORE</text>`;
+    const labels=['COLUMNS','COLORS','JOKERS LEFT','STARS × −2','TOTAL'];
     labels.forEach((label,i)=> {
       const y=465+i*52;
-      s+=`<text x="785" y="${y+25}" font-size="14" font-weight="bold">${label}</text>`;
+      s+=`<text x="799" y="${y+25}" font-size="14" font-weight="bold">${label}</text>`;
       s+=box(right-60,y,60,40,'',i===4?'#e4ecdf':'#ffffff');
     });
     const code = encodeBoard(board);
@@ -149,4 +149,5 @@
   window.addEventListener('resize',fitPreview);
   update();
 })();
+
 
